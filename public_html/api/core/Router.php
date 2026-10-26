@@ -13,6 +13,7 @@ use OmniPOS\Controllers\ProductsController;
 use OmniPOS\Controllers\PurchasesController;
 use OmniPOS\Controllers\ReportsController;
 use OmniPOS\Controllers\RestaurantController;
+use OmniPOS\Controllers\ReturnsController;
 use OmniPOS\Controllers\SettingsController;
 use OmniPOS\Controllers\ShiftsController;
 

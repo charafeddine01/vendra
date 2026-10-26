@@ -168,7 +168,7 @@ export const App: React.FC = () => {
   // If path is /customer-display or customer pole display tab selected
   const isPoleDisplayOnly = typeof window !== 'undefined' && window.location.pathname === '/customer-display';
   if (isPoleDisplayOnly || activeTab === 'customer_display') {
-    return <CustomerDisplayView settings={settings} />;
+    return <CustomerDisplayView settings={settings} onBack={() => setActiveTab('pos')} />;
   }
 
   // 1. Loading screen

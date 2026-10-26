@@ -11,6 +11,7 @@ import {
 import { ProductGrid } from './ProductGrid';
 import { CartList } from './CartList';
 import { PaymentModal } from './PaymentModal';
+import { CustomerSelectModal } from './CustomerSelectModal';
 import { ThermalReceiptModal } from './ThermalReceiptModal';
 import { HeldOrdersModal } from './HeldOrdersModal';
 import { CameraScannerModal } from './CameraScannerModal';
@@ -36,6 +37,7 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
 
   // Modals
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  const [isCustomerSelectOpen, setIsCustomerSelectOpen] = useState(false);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   const [isHeldModalOpen, setIsHeldModalOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -341,7 +343,7 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
 
     const orderPayload = {
       warehouse_id: 1,
-      customer_id: selectedCustomer?.id || 1,
+      customer_id: paymentData.customer_id || selectedCustomer?.id || 1,
       table_id: selectedTable?.id || null,
       order_type: settings?.business_mode === 'RESTAURANT' ? 'DINE_IN' : 'RETAIL',
       subtotal,
@@ -356,6 +358,7 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
       paid_on_account: paymentData.paidOnAccount,
       change_given: paymentData.changeGiven,
       change_currency: paymentData.changeCurrency,
+      notes: paymentData.notes,
       installment_plan: paymentData.installmentPlan,
       items: cartItems,
       idempotency_key: 'IDEM-' + crypto.randomUUID(),
@@ -436,7 +439,7 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
           settings={settings}
           onUpdateQty={handleUpdateQty}
           onRemoveItem={handleRemoveItem}
-          onOpenCustomerSelect={() => alert('Customer Selector: Assign Walk-in or VIP customer.')}
+          onOpenCustomerSelect={() => setIsCustomerSelectOpen(true)}
           onOpenTableSelect={() => alert('Table Selector: Assign Dine-in Table.')}
           onHoldOrder={handleHoldOrder}
           onRecallHeldOrders={() => setIsHeldModalOpen(true)}
@@ -469,6 +472,14 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
         />
       </div>
 
+      {/* Customer Selection Modal */}
+      <CustomerSelectModal
+        isOpen={isCustomerSelectOpen}
+        selectedCustomerId={selectedCustomer?.id}
+        onClose={() => setIsCustomerSelectOpen(false)}
+        onSelectCustomer={(c) => setSelectedCustomer(c)}
+      />
+
       {/* Payment Modal */}
       <PaymentModal
         isOpen={isPaymentOpen}
@@ -477,6 +488,7 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
         table={selectedTable}
         settings={settings}
         onClose={() => setIsPaymentOpen(false)}
+        onSelectCustomer={(c) => setSelectedCustomer(c)}
         onConfirmOrder={handleConfirmOrder}
       />
 
