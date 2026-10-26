@@ -1,8 +1,9 @@
-# Vendra Commercial Showcase & License Server - Apache / LiteSpeed / cPanel .htaccess
+# Vendra Commercial Showcase & License Server - LiteSpeed / Apache .htaccess
 # Official Domain: vendra.charafeddine.xyz
 
+DirectoryIndex index.html index.php
+
 Options -Indexes
-Options +FollowSymLinks
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
