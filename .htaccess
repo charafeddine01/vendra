@@ -29,23 +29,22 @@ Options -Indexes
     # 4. Uploads
     RewriteRule ^uploads/(.*)$ uploads/$1 [L]
 
-    # 5. Direct Static Asset Resolution
+    # 5. Direct App & Static Asset Resolution
+    RewriteRule ^app/ - [L]
+    RewriteRule ^assets/(.*)$ app/assets/$1 [L]
+
     RewriteCond %{REQUEST_FILENAME} -f
     RewriteRule ^ - [L]
-
-    RewriteCond %{DOCUMENT_ROOT}/app/assets/$1 -f
-    RewriteRule ^assets/(.*)$ app/assets/$1 [L]
 
     # 6. Commercial Showcase Landing Page (Root /)
     RewriteRule ^$ index.html [L]
 
     # 7. Customer Live Test Routing:
     # Any customer company path (e.g. /al-shams, /solar, /demo, /solar-tech)
-    # Serves the POS application with tenant context:
     RewriteCond %{REQUEST_URI} !^/(api|license-api|install|uploads|config|database|app|dist) [NC]
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule ^([a-zA-Z0-9_-]+)/?$ app/index.html [QSA,L]
+    RewriteRule ^[a-zA-Z0-9_-]+/?$ app/index.html [L]
 
     RewriteCond %{REQUEST_URI} !^/(api|license-api|install|uploads|config|database|app|dist) [NC]
     RewriteCond %{REQUEST_FILENAME} !-f
