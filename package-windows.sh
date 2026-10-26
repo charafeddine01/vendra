@@ -24,6 +24,12 @@ cp -r "$ROOT_DIR/public/"* "$APP_DIR/public/" 2>/dev/null || true
 cp "$DIST_WIN/VendraPOS/vendra.ico" "$APP_DIR/public/favicon.ico"
 cp "$DIST_WIN/VendraPOS/vendra.ico" "$APP_DIR/dist/favicon.ico"
 
+# Ensure solar database with installments is bundled
+mkdir -p "$APP_DIR/database"
+if [ -f "$ROOT_DIR/database/omnipos-solar.sqlite" ]; then
+    cp -f "$ROOT_DIR/database/omnipos-solar.sqlite" "$APP_DIR/database/omnipos.sqlite"
+fi
+
 # 3. Create zip distribution
 echo "-> Creating zip archive..."
 cd "$DIST_WIN"
