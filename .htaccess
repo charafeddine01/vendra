@@ -33,28 +33,16 @@ Options -Indexes
     RewriteRule ^app/ - [L]
     RewriteRule ^assets/(.*)$ app/assets/$1 [L]
 
-    RewriteCond %{REQUEST_FILENAME} -f
+    # Serve physical file or directory if it exists
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
 
-    # 6. Commercial Showcase Landing Page (Root /)
-    RewriteRule ^$ index.html [L]
-
-    # 7. Customer Live Test Routing:
-    # Redirects /customer_company_name to /app/?tenant=customer_company_name
-    RewriteCond %{REQUEST_URI} !^/(api|license-api|install|uploads|config|database|app|dist) [NC]
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
+    # 6. Customer Live Showroom Test Routing (e.g. /al-shams, /solar, /demo)
     RewriteRule ^([a-zA-Z0-9_-]+)/?$ /app/?tenant=$1 [R=302,L]
 
-    RewriteCond %{REQUEST_URI} !^/(api|license-api|install|uploads|config|database|app|dist) [NC]
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule ^([a-zA-Z0-9_-]+)/(.*)$ app/$2 [QSA,L]
-
-    # Fallback to showcase landing page
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule ^.*$ index.html [L]
+    # 7. Commercial Showcase Landing Page (Root /)
+    RewriteRule ^$ index.html [L]
 </IfModule>
 
 # Security Headers
