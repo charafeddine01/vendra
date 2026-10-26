@@ -1,0 +1,8 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=$(if [ -d "$HOME/public_html/vendra" ]; then echo "$HOME/public_html/vendra"; elif [ -d "$HOME/vendra.charafeddine.xyz" ]; then echo "$HOME/vendra.charafeddine.xyz"; else echo "$HOME/public_html"; fi)
+    - /bin/cp -R * $DEPLOYPATH/ 2>/dev/null || true
+    - /bin/cp -a .htaccess $DEPLOYPATH/ 2>/dev/null || true
+    - /bin/cp -a config/.htaccess $DEPLOYPATH/config/ 2>/dev/null || true
+    - /bin/cp -a license-api/.htaccess $DEPLOYPATH/license-api/ 2>/dev/null || true
