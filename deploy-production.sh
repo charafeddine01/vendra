@@ -10,8 +10,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # If running in server deployment container / detached HEAD / deploys directory, exit cleanly
 if [ -z "$(git branch --list main 2>/dev/null)" ] || [ -n "$CI" ] || [[ "$PWD" == *"/deploys/"* ]] || [ ! -d ".git" ]; then
     echo "=== Server Deployment Environment Detected ==="
-    echo "Vendra Portal requires no compilation. Pure PHP 8.2+ & Static HTML ready."
-    echo "Build succeeded."
+    ./build.sh
     exit 0
 fi
 

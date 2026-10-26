@@ -1,7 +1,31 @@
+node_modules
+node_modules/
+.DS_Store
+*.log
+*.zip
+*.tar.xz
 *.sqlite
 *.sqlite3
 *.db
-*.log
-.DS_Store
-*.zip
-*.tar.xz
+
+# Environment and sensitive locks
+config/env.php
+config/installed.lock
+api/config/env.php
+api/config/installed.lock
+public_html/config/env.php
+public_html/config/installed.lock
+public_html/api/config/env.php
+public_html/api/config/installed.lock
+
+# Windows standalone distribution binaries
+dist-windows/downloads/
+dist-windows/*.zip
+dist-windows/VendraPOS/php/*.dll
+dist-windows/VendraPOS/php/*.exe
+dist-windows/VendraPOS/php/dev/
+dist-windows/VendraPOS/php/ext/
+dist-windows/VendraPOS/php/lib/
+dist-windows/VendraPOS/php/extras/
+dist-windows/VendraPOS/logs/
+dist-windows/VendraPOS/app/

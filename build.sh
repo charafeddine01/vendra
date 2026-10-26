@@ -1,66 +1,72 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== Vendra Portal: Preparing Production Assets ==="
+echo "=== Vendra Commercial Platform: Building Production Assets ==="
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# 1. Update internal public_html
-mkdir -p public_html
+# 1. Compile POS Frontend if node/npm is available
+if command -v npm >/dev/null 2>&1; then
+    echo "-> Compiling Vendra POS Web App with Vite..."
+    npm run build || true
+fi
+
+# 2. Setup internal public_html structure
+mkdir -p public_html/app
+mkdir -p public_html/api
+mkdir -p public_html/database
+mkdir -p public_html/config
+mkdir -p public_html/license-api
+mkdir -p public_html/uploads
+mkdir -p public_html/install
+
+# Showcase Landing Page & Root files
 cp -f index.html public_html/
 cp -f index.php public_html/
 cp -f .htaccess public_html/
-cp -f server.js public_html/ 2>/dev/null || true
-cp -f package.json public_html/ 2>/dev/null || true
-cp -rf config public_html/
-cp -rf database public_html/
-cp -rf install public_html/
-cp -rf license-api public_html/
-cp -rf uploads public_html/
+cp -f vendra.ico public_html/favicon.ico 2>/dev/null || true
 
-# 2. Mirror to public/ and dist/
-for TARGET in public dist; do
-    mkdir -p "$TARGET"
-    cp -f index.html "$TARGET/"
-    cp -f index.php "$TARGET/"
-    cp -f .htaccess "$TARGET/"
-    cp -rf config "$TARGET/"
-    cp -rf database "$TARGET/"
-    cp -rf install "$TARGET/"
-    cp -rf license-api "$TARGET/"
-    cp -rf uploads "$TARGET/"
-done
+# POS Application (compiled into app/ and assets/)
+if [ -d "dist" ]; then
+    cp -f dist/app.html public_html/app/index.html 2>/dev/null || true
+    if [ -d "dist/assets" ]; then
+        mkdir -p public_html/app/assets public_html/assets
+        cp -rf dist/assets/* public_html/app/assets/ 2>/dev/null || true
+        cp -rf dist/assets/* public_html/assets/ 2>/dev/null || true
+    fi
+fi
 
-# 3. Enhance server auto-recovery:
-# Find website root (typically ../.. from deploys/<hash> or current dir)
+# POS Backend API
+cp -rf api/* public_html/api/ 2>/dev/null || true
+
+# Databases & Seeders
+cp -rf database/* public_html/database/ 2>/dev/null || true
+
+# Config, Licensing, Uploads
+cp -rf config/* public_html/config/ 2>/dev/null || true
+cp -rf license-api/* public_html/license-api/ 2>/dev/null || true
+cp -rf install/* public_html/install/ 2>/dev/null || true
+cp -rf uploads/* public_html/uploads/ 2>/dev/null || true
+
+# 3. Enhance Server Auto-Sync (handles deploy clones into website root)
 CANDIDATE_ROOTS=("../.." ".." ".")
 for ROOT in "${CANDIDATE_ROOTS[@]}"; do
     ABS_ROOT="$(cd "$ROOT" 2>/dev/null && pwd || true)"
     if [ -n "$ABS_ROOT" ] && { [ -d "$ABS_ROOT/deploys" ] || [ -d "$ABS_ROOT/public_html.bak" ] || [ -f "$ABS_ROOT/.my.cnf" ]; }; then
         echo "Found Enhance website root at: $ABS_ROOT"
         
-        # Restore / create public_html
-        mkdir -p "$ABS_ROOT/public_html"
-        cp -f index.html "$ABS_ROOT/public_html/"
-        cp -f index.php "$ABS_ROOT/public_html/"
-        cp -f .htaccess "$ABS_ROOT/public_html/"
-        cp -rf config "$ABS_ROOT/public_html/"
-        cp -rf database "$ABS_ROOT/public_html/"
-        cp -rf install "$ABS_ROOT/public_html/"
-        cp -rf license-api "$ABS_ROOT/public_html/"
-        cp -rf uploads "$ABS_ROOT/public_html/"
-        chmod 755 "$ABS_ROOT/public_html" 2>/dev/null || true
+        mkdir -p "$ABS_ROOT/public_html/app/assets"
+        mkdir -p "$ABS_ROOT/public_html/assets"
+        mkdir -p "$ABS_ROOT/public_html/api"
+        mkdir -p "$ABS_ROOT/public_html/database"
+        mkdir -p "$ABS_ROOT/public_html/license-api"
+        mkdir -p "$ABS_ROOT/public_html/uploads"
         
-        # Also ensure root has entrypoints
-        cp -f index.html "$ABS_ROOT/" 2>/dev/null || true
-        cp -f index.php "$ABS_ROOT/" 2>/dev/null || true
-        cp -f .htaccess "$ABS_ROOT/" 2>/dev/null || true
-        cp -f server.js "$ABS_ROOT/" 2>/dev/null || true
-        cp -f package.json "$ABS_ROOT/" 2>/dev/null || true
+        cp -rf public_html/* "$ABS_ROOT/public_html/"
+        chmod -R 755 "$ABS_ROOT/public_html" 2>/dev/null || true
         break
     fi
 done
 
-echo "Vendra Portal: Pure PHP 8.2+ & Node.js dual-compatibility ready."
-echo "Build succeeded."
+echo "Vendra Platform build completed successfully."
 exit 0

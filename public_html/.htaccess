@@ -1,5 +1,6 @@
-# Vendra Commercial Showcase & License Server - LiteSpeed / Apache .htaccess
+# Vendra Commercial Platform & Multi-Tenant POS
 # Official Domain: vendra.charafeddine.xyz
+# LiteSpeed & Apache Production Configuration
 
 DirectoryIndex index.html index.php
 
@@ -9,26 +10,49 @@ Options -Indexes
     RewriteEngine On
     RewriteBase /
 
-    # Security: Protect sensitive backend directories and database files
-    RewriteRule ^database/ - [F,L]
+    # Security: Protect backend database files and credentials
     RewriteRule ^config/ - [F,L]
     RewriteRule \.(sql|sqlite|sqlite3|db|env|log|key)$ - [F,L]
 
-    # Route all license API calls to license-api/index.php
+    # 1. Central Vendor Licensing API
     RewriteRule ^license-api/(.*)$ license-api/index.php [QSA,L]
+    RewriteRule ^license-api$ license-api/index.php [QSA,L]
 
-    # Web Installer direct access
+    # 2. Universal POS Client Backend API (Multi-Tenant Aware)
+    RewriteRule ^api/(.*)$ api/index.php [QSA,L]
+    RewriteRule ^api$ api/index.php [QSA,L]
+
+    # 3. Web Installer
     RewriteRule ^install/(.*)$ install/$1 [L]
     RewriteRule ^install$ install/ [R=301,L]
 
-    # Uploads direct access
+    # 4. Uploads
     RewriteRule ^uploads/(.*)$ uploads/$1 [L]
 
-    # Serve static files if they exist (index.html, robots.txt, favicon, etc.)
+    # 5. Direct Static Asset Resolution
     RewriteCond %{REQUEST_FILENAME} -f
     RewriteRule ^ - [L]
 
-    # Fallback to index.html for showcase single page navigation
+    RewriteCond %{DOCUMENT_ROOT}/app/assets/$1 -f
+    RewriteRule ^assets/(.*)$ app/assets/$1 [L]
+
+    # 6. Commercial Showcase Landing Page (Root /)
+    RewriteRule ^$ index.html [L]
+
+    # 7. Customer Live Test Routing:
+    # Any customer company path (e.g. /al-shams, /solar, /demo, /solar-tech)
+    # Serves the POS application with tenant context:
+    RewriteCond %{REQUEST_URI} !^/(api|license-api|install|uploads|config|database|app|dist) [NC]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^([a-zA-Z0-9_-]+)/?$ app/index.html [QSA,L]
+
+    RewriteCond %{REQUEST_URI} !^/(api|license-api|install|uploads|config|database|app|dist) [NC]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^([a-zA-Z0-9_-]+)/(.*)$ app/$2 [QSA,L]
+
+    # Fallback to showcase landing page
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^.*$ index.html [L]
@@ -42,7 +66,7 @@ Options -Indexes
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
 
-# Gzip / Brotli Compression
+# Compression
 <IfModule mod_deflate.c>
     AddOutputFilterByType DEFLATE application/javascript application/json text/css text/html text/plain text/xml image/svg+xml
 </IfModule>
