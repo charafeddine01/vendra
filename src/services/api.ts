@@ -46,13 +46,23 @@ export class ApiService {
     };
 
     try {
+      const tenantParam = typeof window !== 'undefined'
+        ? (new URLSearchParams(window.location.search).get('tenant') || '')
+        : '';
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-Terminal-Id': this.terminalId,
+      };
+
+      if (tenantParam) {
+        headers['X-Tenant'] = tenantParam;
+      }
+
       const response = await fetch(API_ENDPOINT, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-Terminal-Id': this.terminalId,
-        },
+        headers,
         body: JSON.stringify(envelope),
       });
 
