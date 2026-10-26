@@ -21,7 +21,7 @@ class ReturnsController
                                FROM `orders` o
                                LEFT JOIN `users` u ON o.cashier_id = u.id
                                LEFT JOIN `customers` c ON o.customer_id = c.id
-                               WHERE o.invoice_number = :inv LIMIT 1');
+                               WHERE o.invoice_number like :inv LIMIT 2');
         $stmt->execute([':inv' => $invoiceNumber]);
         $order = $stmt->fetch();
 
