@@ -48,6 +48,13 @@ cp -rf license-api/* public_html/license-api/ 2>/dev/null || true
 cp -rf install/* public_html/install/ 2>/dev/null || true
 cp -rf uploads/* public_html/uploads/ 2>/dev/null || true
 
+# Customer Live Demo routes (direct symlinks to app)
+CUSTOMERS=("al-shams" "solar" "demo" "solar-tech")
+for CUST in "${CUSTOMERS[@]}"; do
+    rm -rf "public_html/$CUST"
+    ln -s app "public_html/$CUST" 2>/dev/null || true
+done
+
 # 3. Enhance Server Auto-Sync (handles deploy clones into website root)
 CANDIDATE_ROOTS=("../.." ".." ".")
 for ROOT in "${CANDIDATE_ROOTS[@]}"; do
@@ -63,6 +70,10 @@ for ROOT in "${CANDIDATE_ROOTS[@]}"; do
         mkdir -p "$ABS_ROOT/public_html/uploads"
         
         cp -rf public_html/* "$ABS_ROOT/public_html/"
+        for CUST in "${CUSTOMERS[@]}"; do
+            rm -rf "$ABS_ROOT/public_html/$CUST"
+            ln -sf app "$ABS_ROOT/public_html/$CUST" 2>/dev/null || true
+        done
         chmod -R 755 "$ABS_ROOT/public_html" 2>/dev/null || true
         break
     fi
