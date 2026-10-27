@@ -16,7 +16,8 @@ import {
   Tv,
   LogOut,
   ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  HardDrive
 } from 'lucide-react';
 
 export type ActiveTab =
@@ -30,6 +31,7 @@ export type ActiveTab =
   | 'customers'
   | 'installments'
   | 'reports'
+  | 'backup'
   | 'settings'
   | 'customer_display'
   | 'license';
@@ -56,6 +58,7 @@ export const Sidebar: React.FC<Props> = ({ activeTab, settings, onSelectTab, onL
     { id: 'customers', label: I18nService.t('nav.customers'), icon: Users },
     { id: 'installments', label: 'Installments (أقساط)', icon: Calendar },
     { id: 'reports', label: I18nService.t('nav.reports'), icon: BarChart3 },
+    { id: 'backup', label: 'Backup & Cloud (USB/Drive)', icon: HardDrive },
     { id: 'settings', label: I18nService.t('nav.settings'), icon: Settings },
     { id: 'customer_display', label: I18nService.t('nav.customer_display'), icon: Tv },
     { id: 'license', label: I18nService.t('lic.title'), icon: ShieldCheck },

@@ -16,6 +16,7 @@ use OmniPOS\Controllers\RestaurantController;
 use OmniPOS\Controllers\ReturnsController;
 use OmniPOS\Controllers\SettingsController;
 use OmniPOS\Controllers\ShiftsController;
+use OmniPOS\Controllers\BackupController;
 
 class Router
 {
@@ -45,6 +46,17 @@ class Router
         'settings.get'            => [SettingsController::class, 'get'],
         'settings.update'         => [SettingsController::class, 'update'],
         'settings.uploadLogo'     => [SettingsController::class, 'uploadLogo'],
+
+        // Database Backup & Sync Engine
+        'backup.getSettings'      => [BackupController::class, 'getSettings'],
+        'backup.updateSettings'   => [BackupController::class, 'updateSettings'],
+        'backup.detectUsb'        => [BackupController::class, 'detectUsb'],
+        'backup.testUsb'          => [BackupController::class, 'testUsb'],
+        'backup.testGoogleDrive'  => [BackupController::class, 'testGoogleDrive'],
+        'backup.run'              => [BackupController::class, 'run'],
+        'backup.checkAndRunScheduled' => [BackupController::class, 'checkAndRunScheduled'],
+        'backup.getLogs'          => [BackupController::class, 'getLogs'],
+        'backup.download'         => [BackupController::class, 'download'],
 
         // POS Register
         'pos.catalog'             => [PosController::class, 'catalog'],
