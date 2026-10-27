@@ -3,6 +3,7 @@ import { User, CompanySettings, Shift, LicenseStatus } from './types';
 import { ApiService } from './services/api';
 import { HardwareService } from './services/hardwareService';
 import { OfflineSyncService } from './services/offlineSyncService';
+import { BackupSyncService } from './services/backupSyncService';
 import { I18nService } from './services/i18nService';
 
 // Layout Components
@@ -20,6 +21,7 @@ import { CustomersManager } from './components/customers/CustomersManager';
 import { InstallmentsManager } from './components/installments/InstallmentsManager';
 import { ReportsDashboard } from './components/reports/ReportsDashboard';
 import { SettingsManager } from './components/settings/SettingsManager';
+import { BackupSyncManager } from './components/settings/BackupSyncManager';
 import { CustomerDisplayView } from './components/customerDisplay/CustomerDisplayView';
 import { LicenseActivationGate } from './components/license/LicenseActivationGate';
 import { ShiftModal } from './components/shifts/ShiftModal';
@@ -85,6 +87,12 @@ export const App: React.FC = () => {
       console.warn('[OfflineSync] Auto-sync skipped:', e);
     }
 
+    try {
+      BackupSyncService.startBackgroundScheduler();
+    } catch (e) {
+      console.warn('[BackupSync] Background scheduler skipped:', e);
+    }
+
     // Setup global license error listener
     ApiService.setLicenseErrorCallback((err) => {
       console.warn('[LicenseGuard] Error callback triggered:', err);
@@ -92,6 +100,10 @@ export const App: React.FC = () => {
     });
 
     initAppData();
+
+    return () => {
+      BackupSyncService.stopBackgroundScheduler();
+    };
   }, []);
 
   const initAppData = async () => {
@@ -209,6 +221,7 @@ export const App: React.FC = () => {
         onOpenSwitchModal={() => setIsSwitchCashierOpen(true)}
         onOpenShiftModal={() => setIsShiftModalOpen(true)}
         onModeChange={handleBusinessModeChange}
+        onOpenBackupSync={() => setActiveTab('backup')}
       />
 
       {/* Main Layout Area */}
@@ -258,6 +271,14 @@ export const App: React.FC = () => {
           {activeTab === 'installments' && <InstallmentsManager settings={settings} />}
 
           {activeTab === 'reports' && <ReportsDashboard />}
+
+          {activeTab === 'backup' && (
+            <div className="flex-1 overflow-y-auto bg-slate-950 p-6">
+              <div className="max-w-4xl mx-auto">
+                <BackupSyncManager />
+              </div>
+            </div>
+          )}
 
           {activeTab === 'settings' && (
             <SettingsManager
