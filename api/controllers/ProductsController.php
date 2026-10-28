@@ -46,7 +46,8 @@ class ProductsController
             $params[':type'] = $type;
         }
 
-        $sql .= ' ORDER BY p.id DESC';
+        // Keep zero stock at the end of the list
+        $sql .= ' ORDER BY (CASE WHEN COALESCE(si.quantity, 0) > 0 THEN 0 ELSE 1 END) ASC, p.id DESC';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
@@ -122,6 +123,10 @@ class ProductsController
         $packQuantity = (int)($payload['pack_quantity'] ?? 1);
         $minOrderPrice = (float)($payload['min_order_price'] ?? 0);
         $minOrderQty = (int)($payload['min_order_qty'] ?? 1);
+        $isOnline = isset($payload['is_online']) ? ((int)$payload['is_online'] ? 1 : 0) : 1;
+        $lowStockLocal = (int)($payload['low_stock_local'] ?? 5);
+        $lowStockOnline = (int)($payload['low_stock_online'] ?? 5);
+        $stockInputMode = $payload['stock_input_mode'] ?? 'UNITS'; // 'UNITS' or 'PACKS'
         $extraBarcodes = !empty($payload['extra_barcodes']) && is_array($payload['extra_barcodes']) ? $payload['extra_barcodes'] : [];
 
         if (empty($name)) {
@@ -144,7 +149,8 @@ class ProductsController
                     `min_order_price` = :min_price, `min_order_qty` = :min_qty,
                     `track_inventory` = :track, `alert_quantity` = :alert, `scale_plu` = :plu,
                     `image_url` = :img, `modifiers_schema` = :modifiers, `is_kitchen_item` = :kitch,
-                    `kitchen_station` = :station, `warranty_months` = :warr
+                    `kitchen_station` = :station, `warranty_months` = :warr,
+                    `is_online` = :is_online, `low_stock_local` = :low_local, `low_stock_online` = :low_online
                     WHERE `id` = :id';
                 $params = [
                     ':sku' => $sku, ':bc' => $barcode, ':name' => $name, ':name_ar' => $nameAr,
@@ -154,7 +160,9 @@ class ProductsController
                     ':min_price' => $minOrderPrice, ':min_qty' => $minOrderQty,
                     ':track' => $trackInventory, ':alert' => $alertQty, ':plu' => $scalePlu,
                     ':img' => $imageUrl, ':modifiers' => $modifiers, ':kitch' => $isKitchen,
-                    ':station' => $kitchenStation, ':warr' => $warrantyMonths, ':id' => $id,
+                    ':station' => $kitchenStation, ':warr' => $warrantyMonths,
+                    ':is_online' => $isOnline, ':low_local' => $lowStockLocal, ':low_online' => $lowStockOnline,
+                    ':id' => $id,
                 ];
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
@@ -165,13 +173,15 @@ class ProductsController
                     `type`, `cost_price`, `selling_price`, `secondary_selling_price`,
                     `pack_price`, `pack_barcode`, `pack_quantity`, `min_order_price`, `min_order_qty`,
                     `track_inventory`, `alert_quantity`, `scale_plu`, `image_url`,
-                    `modifiers_schema`, `is_kitchen_item`, `kitchen_station`, `warranty_months`
+                    `modifiers_schema`, `is_kitchen_item`, `kitchen_station`, `warranty_months`,
+                    `is_online`, `low_stock_local`, `low_stock_online`
                 ) VALUES (
                     :sku, :bc, :name, :name_ar, :cid, :uid, :trid,
                     :type, :cost, :price, :sec_price,
                     :pack_price, :pack_bc, :pack_qty, :min_price, :min_qty,
                     :track, :alert, :plu, :img,
-                    :modifiers, :kitch, :station, :warr
+                    :modifiers, :kitch, :station, :warr,
+                    :is_online, :low_local, :low_online
                 )';
                 $params = [
                     ':sku' => $sku, ':bc' => $barcode, ':name' => $name, ':name_ar' => $nameAr,
@@ -181,13 +191,16 @@ class ProductsController
                     ':min_price' => $minOrderPrice, ':min_qty' => $minOrderQty,
                     ':track' => $trackInventory, ':alert' => $alertQty, ':plu' => $scalePlu, ':img' => $imageUrl,
                     ':modifiers' => $modifiers, ':kitch' => $isKitchen, ':station' => $kitchenStation, ':warr' => $warrantyMonths,
+                    ':is_online' => $isOnline, ':low_local' => $lowStockLocal, ':low_online' => $lowStockOnline,
                 ];
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 $productId = (int)$pdo->lastInsertId();
 
-                // Initialize stock record
-                $initialStock = (float)($payload['initial_stock'] ?? 10);
+                // Initialize stock record (If entered as packs, convert to total individual units)
+                $rawStock = (float)($payload['initial_stock'] ?? 10);
+                $initialStock = ($stockInputMode === 'PACKS' && $packQuantity > 1) ? ($rawStock * $packQuantity) : $rawStock;
+
                 $stmtStock = $pdo->prepare('INSERT INTO `stock_inventory` (`product_id`, `warehouse_id`, `quantity`) VALUES (:pid, 1, :qty)');
                 $stmtStock->execute([':pid' => $productId, ':qty' => $initialStock]);
             }
@@ -243,6 +256,13 @@ class ProductsController
 
             Database::commit();
 
+            // Replicate to online database if configured
+            try {
+                Database::syncProductToOnline($productId);
+            } catch (\Throwable $t) {
+                error_log('[DualDB] Replicate product failed: ' . $t->getMessage());
+            }
+
             Response::success(['product_id' => $productId], 200, 'Product saved successfully.');
         } catch (\Throwable $e) {
             Database::rollBack();
@@ -258,6 +278,13 @@ class ProductsController
         $stmt = $pdo->prepare('UPDATE `products` SET `is_active` = 0 WHERE `id` = :id');
         $stmt->execute([':id' => $id]);
 
+        try {
+            $online = Database::getOnlineInstance();
+            if ($online) {
+                $online->prepare('UPDATE `products` SET `is_active` = 0 WHERE `id` = :id')->execute([':id' => $id]);
+            }
+        } catch (\Throwable $t) {}
+
         Response::success(null, 200, 'Product deactivated.');
     }
 
@@ -266,6 +293,71 @@ class ProductsController
         $pdo = Database::getInstance();
         $stmt = $pdo->query('SELECT * FROM `categories` WHERE `is_active` = 1 ORDER BY `sort_order` ASC');
         Response::success(['categories' => $stmt->fetchAll()]);
+    }
+
+    public static function saveCategory(array $payload): void
+    {
+        Auth::requireRole(['ADMIN', 'MANAGER']);
+        $pdo = Database::getInstance();
+        $id = !empty($payload['id']) ? (int)$payload['id'] : null;
+        $name = trim((string)($payload['name'] ?? ''));
+        $nameAr = !empty($payload['name_ar']) ? trim((string)$payload['name_ar']) : null;
+        $color = !empty($payload['color']) ? trim((string)$payload['color']) : '#3b82f6';
+        $icon = !empty($payload['icon']) ? trim((string)$payload['icon']) : 'Package';
+        $sortOrder = (int)($payload['sort_order'] ?? 0);
+
+        if (empty($name)) {
+            Response::error('Category name is required.', 400);
+        }
+
+        if ($id) {
+            $stmt = $pdo->prepare('UPDATE `categories` SET `name` = :name, `name_ar` = :name_ar, `color` = :color, `icon` = :icon, `sort_order` = :sort WHERE `id` = :id');
+            $stmt->execute([':name' => $name, ':name_ar' => $nameAr, ':color' => $color, ':icon' => $icon, ':sort' => $sortOrder, ':id' => $id]);
+            $catId = $id;
+        } else {
+            $stmt = $pdo->prepare('INSERT INTO `categories` (`name`, `name_ar`, `color`, `icon`, `sort_order`, `is_active`) VALUES (:name, :name_ar, :color, :icon, :sort, 1)');
+            $stmt->execute([':name' => $name, ':name_ar' => $nameAr, ':color' => $color, ':icon' => $icon, ':sort' => $sortOrder]);
+            $catId = (int)$pdo->lastInsertId();
+        }
+
+        // Replicate to online database
+        try {
+            Database::syncCategoryToOnline($catId);
+        } catch (\Throwable $t) {}
+
+        Response::success(['id' => $catId], 200, 'Category saved successfully.');
+    }
+
+    public static function deleteCategory(array $payload): void
+    {
+        Auth::requireRole(['ADMIN', 'MANAGER']);
+        $id = (int)($payload['id'] ?? 0);
+        if ($id <= 0) {
+            Response::error('Invalid category ID.', 400);
+        }
+        $pdo = Database::getInstance();
+        $stmt = $pdo->prepare('UPDATE `categories` SET `is_active` = 0 WHERE `id` = :id');
+        $stmt->execute([':id' => $id]);
+
+        try {
+            $online = Database::getOnlineInstance();
+            if ($online) {
+                $online->prepare('UPDATE `categories` SET `is_active` = 0 WHERE `id` = :id')->execute([':id' => $id]);
+            }
+        } catch (\Throwable $t) {}
+
+        Response::success(null, 200, 'Category deleted successfully.');
+    }
+
+    public static function syncAllToOnline(array $payload): void
+    {
+        Auth::requireRole(['ADMIN', 'MANAGER']);
+        $res = Database::syncAllToOnline();
+        if ($res['success']) {
+            Response::success($res, 200, $res['message']);
+        } else {
+            Response::error($res['message'], 400, $res);
+        }
     }
 
     public static function units(array $payload): void

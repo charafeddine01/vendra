@@ -588,6 +588,7 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
           categories={categories}
           settings={settings}
           onSelectProduct={(p) => addProductToCart(p)}
+          onSelectPack={(p) => addPackProductToCart(p)}
           onOpenScanner={() => setIsCameraOpen(true)}
           onBarcodeScanned={handleBarcodeScanned}
           onOpenReceipts={() => setIsReceiptBrowserOpen(true)}

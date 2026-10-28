@@ -23,9 +23,12 @@ class InventoryController
         $lowStockOnly = !empty($payload['low_stock_only']);
 
         $sql = 'SELECT p.id as product_id, p.name as product_name, p.sku, p.barcode, p.alert_quantity, p.cost_price, p.selling_price,
+                       p.pack_price, p.pack_barcode, p.pack_quantity,
+                       p.min_order_price, p.min_order_qty,
+                       p.is_online, p.low_stock_local, p.low_stock_online, p.image_url,
                        c.name as category_name, u.code as unit_code,
                        COALESCE(si.quantity, 0) as current_quantity,
-                       CASE WHEN COALESCE(si.quantity, 0) <= p.alert_quantity THEN 1 ELSE 0 END as is_low_stock
+                       CASE WHEN COALESCE(si.quantity, 0) <= COALESCE(p.low_stock_local, p.alert_quantity, 5) THEN 1 ELSE 0 END as is_low_stock
                 FROM `products` p
                 LEFT JOIN `categories` c ON p.category_id = c.id
                 LEFT JOIN `units` u ON p.unit_id = u.id
@@ -33,10 +36,11 @@ class InventoryController
                 WHERE p.is_active = 1 AND p.track_inventory = 1';
 
         if ($lowStockOnly) {
-            $sql .= ' AND COALESCE(si.quantity, 0) <= p.alert_quantity';
+            $sql .= ' AND COALESCE(si.quantity, 0) <= COALESCE(p.low_stock_local, p.alert_quantity, 5)';
         }
 
-        $sql .= ' ORDER BY is_low_stock DESC, p.name ASC';
+        // Keep zero stock at the end of the list
+        $sql .= ' ORDER BY (CASE WHEN COALESCE(si.quantity, 0) > 0 THEN 0 ELSE 1 END) ASC, is_low_stock DESC, p.name ASC';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([':wh' => $warehouseId]);
@@ -55,6 +59,7 @@ class InventoryController
         $warehouseId = (int)($payload['warehouse_id'] ?? 1);
         $adjustmentQty = (float)($payload['quantity'] ?? 0); // e.g. +5 or -2
         $reason = trim((string)($payload['reason'] ?? 'Manual Stock Adjustment'));
+        $inputMode = $payload['input_mode'] ?? ($payload['unit_type'] ?? 'UNITS'); // 'UNITS' or 'PACKS'
 
         if ($productId <= 0 || $adjustmentQty == 0) {
             Response::error('Invalid product or adjustment quantity.', 400);
@@ -64,6 +69,16 @@ class InventoryController
         Database::beginTransaction();
 
         try {
+            // Check if product has pack quantity
+            $stmtP = $pdo->prepare('SELECT `pack_quantity` FROM `products` WHERE `id` = :pid');
+            $stmtP->execute([':pid' => $productId]);
+            $packQty = (int)$stmtP->fetchColumn();
+
+            if (strtoupper($inputMode) === 'PACKS' && $packQty > 1) {
+                $rawPacks = $adjustmentQty;
+                $adjustmentQty = $rawPacks * $packQty;
+                $reason .= " ({$rawPacks} pack(s) x{$packQty} = {$adjustmentQty} units)";
+            }
             // Check existing stock
             $stmtCheck = $pdo->prepare('SELECT `id`, `quantity` FROM `stock_inventory` WHERE `product_id` = :pid AND `variant_id` IS NULL AND `warehouse_id` = :wh');
             $stmtCheck->execute([':pid' => $productId, ':wh' => $warehouseId]);

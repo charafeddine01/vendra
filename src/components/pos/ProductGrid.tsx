@@ -8,6 +8,7 @@ interface Props {
   categories: Category[];
   settings: CompanySettings | null;
   onSelectProduct: (product: Product) => void;
+  onSelectPack?: (product: Product) => void;
   onOpenScanner: () => void;
   onBarcodeScanned?: (barcode: string) => void;
   onOpenReceipts?: () => void;
@@ -18,6 +19,7 @@ export const ProductGrid: React.FC<Props> = ({
   categories,
   settings,
   onSelectProduct,
+  onSelectPack,
   onOpenScanner,
   onBarcodeScanned,
   onOpenReceipts,
@@ -63,7 +65,7 @@ export const ProductGrid: React.FC<Props> = ({
   const secondaryRate = settings?.secondary_currency_rate || 0.92;
 
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
+    const list = products.filter((p) => {
       // Category filter
       if (selectedCatId !== 'ALL' && p.category_id !== selectedCatId) {
         return false;
@@ -81,6 +83,15 @@ export const ProductGrid: React.FC<Props> = ({
         (p.extra_barcodes && p.extra_barcodes.some((eb) => eb.barcode && eb.barcode.toLowerCase().includes(q))) ||
         (p.scale_plu && p.scale_plu.includes(q))
       );
+    });
+
+    // Zero stock always sorted to the end of the list
+    return list.sort((a, b) => {
+      const stockA = Number(a.stock_quantity ?? 0);
+      const stockB = Number(b.stock_quantity ?? 0);
+      if (stockA > 0 && stockB <= 0) return -1;
+      if (stockA <= 0 && stockB > 0) return 1;
+      return 0;
     });
   }, [products, selectedCatId, searchQuery]);
 
@@ -141,11 +152,11 @@ export const ProductGrid: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Category Pills Bar */}
-      <div className="px-3 py-2 bg-slate-900/80 border-b border-slate-800/80 flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
+      {/* Category Pills Bar (Multiline wrap, no horizontal scrolling) */}
+      <div className="px-3 py-2 bg-slate-900/90 border-b border-slate-800 flex flex-wrap items-center gap-1.5 shrink-0 max-h-36 overflow-y-auto">
         <button
           onClick={() => setSelectedCatId('ALL')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap shrink-0 ${
+          className={`px-3 py-1 rounded-xl text-xs font-bold transition whitespace-nowrap shrink-0 ${
             selectedCatId === 'ALL'
               ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
               : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700/60'
@@ -160,13 +171,13 @@ export const ProductGrid: React.FC<Props> = ({
             <button
               key={cat.id}
               onClick={() => setSelectedCatId(cat.id)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
                 isSelected
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
                   : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700/60'
               }`}
             >
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color || '#3b82f6' }} />
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color || '#3b82f6' }} />
               <span>{cat.name}</span>
             </button>
           );
@@ -188,46 +199,85 @@ export const ProductGrid: React.FC<Props> = ({
               const isScale = p.type === 'SCALE';
               const isCombo = p.type === 'COMBO';
               const isVariable = p.type === 'VARIABLE';
-              const isLowStock = (p.stock_quantity ?? 0) <= p.alert_quantity && p.track_inventory === 1;
+              const stockQty = Number(p.stock_quantity ?? 0);
+              const isZeroStock = stockQty <= 0 && p.track_inventory === 1;
+              const isLowStock = !isZeroStock && stockQty <= (p.low_stock_local ?? p.alert_quantity) && p.track_inventory === 1;
+              const packQty = Number(p.pack_quantity || 1);
+              const hasPack = packQty > 1 || (p.pack_price && Number(p.pack_price) > 0);
+              const packPrice = Number(p.pack_price || Number(p.selling_price) * packQty);
 
               return (
-                <button
+                <div
                   key={p.id}
                   onClick={() => onSelectProduct(p)}
-                  className="group bg-slate-800/90 hover:bg-slate-750 active:scale-[0.98] border border-slate-700/70 hover:border-blue-500/50 rounded-2xl p-2.5 text-left flex flex-col justify-between transition-all duration-150 shadow-sm relative overflow-hidden"
+                  className={`group bg-slate-800/90 hover:bg-slate-750 active:scale-[0.99] border ${
+                    isZeroStock
+                      ? 'border-slate-800/80 opacity-60'
+                      : 'border-slate-700/70 hover:border-blue-500/50'
+                  } rounded-2xl p-2.5 text-left flex flex-col justify-between transition-all duration-150 shadow-sm relative overflow-hidden cursor-pointer`}
                 >
                   {/* Top Badges */}
                   <div className="flex items-center justify-between gap-1 w-full mb-1">
-                    {isScale && (
-                      <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
-                        <Scale className="w-2.5 h-2.5" /> PLU {p.scale_plu || 'SCALE'}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {isScale && (
+                        <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                          <Scale className="w-2.5 h-2.5" /> PLU {p.scale_plu || 'SCALE'}
+                        </span>
+                      )}
+                      {isCombo && (
+                        <span className="bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                          <Sparkles className="w-2.5 h-2.5" /> Combo
+                        </span>
+                      )}
+                      {isVariable && (
+                        <span className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                          <Layers className="w-2.5 h-2.5" /> Variants
+                        </span>
+                      )}
+                      {hasPack && (
+                        <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                          Pack x{packQty}
+                        </span>
+                      )}
+                    </div>
+
+                    {isZeroStock ? (
+                      <span className="bg-rose-950/80 text-rose-400 border border-rose-800/50 text-[9px] font-bold px-1.5 py-0.5 rounded-md shrink-0">
+                        Zero Stock
                       </span>
-                    )}
-                    {isCombo && (
-                      <span className="bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
-                        <Sparkles className="w-2.5 h-2.5" /> Combo
+                    ) : isLowStock ? (
+                      <span className="bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-md shrink-0">
+                        Low: {stockQty.toFixed(0)}
                       </span>
-                    )}
-                    {isVariable && (
-                      <span className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
-                        <Layers className="w-2.5 h-2.5" /> Variants
+                    ) : p.track_inventory === 1 ? (
+                      <span className="text-[9px] text-slate-400 font-mono shrink-0">
+                        {packQty > 1 && stockQty > 0
+                          ? `${stockQty} (${Math.floor(stockQty / packQty)}p+${stockQty % packQty})`
+                          : `${stockQty}`}
                       </span>
-                    )}
-                    {isLowStock && (
-                      <span className="bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-md ml-auto">
-                        Low: {Number(p.stock_quantity).toFixed(0)}
-                      </span>
-                    )}
+                    ) : null}
                   </div>
 
-                  {/* Title & SKU */}
-                  <div className="my-1">
-                    <h3 className="text-xs font-bold text-white line-clamp-2 leading-tight group-hover:text-blue-400 transition">
-                      {p.name}
-                    </h3>
-                    <p className="text-[10px] text-slate-400 font-mono mt-0.5 truncate">
-                      {p.barcode || p.sku}
-                    </p>
+                  {/* Title & Thumbnail */}
+                  <div className="my-1 flex items-start gap-2">
+                    {p.image_url ? (
+                      <img
+                        src={p.image_url}
+                        alt={p.name}
+                        className="w-10 h-10 rounded-xl object-cover border border-slate-700/80 shrink-0 bg-slate-900"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    ) : null}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-xs font-bold text-white line-clamp-2 leading-tight group-hover:text-blue-400 transition">
+                        {p.name}
+                      </h3>
+                      <p className="text-[10px] text-slate-400 font-mono mt-0.5 truncate">
+                        {p.barcode || p.sku}
+                      </p>
+                    </div>
                   </div>
 
                   {/* Price Row */}
@@ -240,7 +290,28 @@ export const ProductGrid: React.FC<Props> = ({
                       {secondarySymbol}{priceSec.toFixed(2)}
                     </div>
                   </div>
-                </button>
+
+                  {/* Pack Quick Sale Action (Cashier can sell as pack even without barcode) */}
+                  {hasPack && onSelectPack && (
+                    <div className="mt-2 pt-1.5 border-t border-slate-700/40 flex items-center justify-between gap-1 w-full">
+                      <span className="text-[10px] text-slate-400 truncate">
+                        Pack: <span className="font-bold text-amber-300">{primarySymbol}{packPrice.toFixed(2)}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectPack(p);
+                        }}
+                        className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/40 text-[10px] font-bold transition flex items-center gap-1 shadow-sm shrink-0"
+                        title={`Sell 1 Pack (${packQty} units) without barcode`}
+                      >
+                        <Package className="w-3 h-3" />
+                        +Pack
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

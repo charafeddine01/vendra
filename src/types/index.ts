@@ -157,6 +157,9 @@ export interface Product {
   extra_barcodes?: ProductBarcode[];
   track_inventory: number;
   alert_quantity: number;
+  is_online?: number | boolean;
+  low_stock_local?: number;
+  low_stock_online?: number;
   stock_quantity?: number;
   scale_plu?: string;
   image_url?: string;

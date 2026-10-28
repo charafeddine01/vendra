@@ -87,8 +87,14 @@ class Router
         'products.save'           => [ProductsController::class, 'save'],
         'products.delete'         => [ProductsController::class, 'delete'],
         'products.categories'     => [ProductsController::class, 'categories'],
+        'products.categories.save'=> [ProductsController::class, 'saveCategory'],
+        'products.categories.delete' => [ProductsController::class, 'deleteCategory'],
+        'categories.list'         => [ProductsController::class, 'categories'],
+        'categories.save'         => [ProductsController::class, 'saveCategory'],
+        'categories.delete'       => [ProductsController::class, 'deleteCategory'],
         'products.units'          => [ProductsController::class, 'units'],
         'products.taxRates'       => [ProductsController::class, 'taxRates'],
+        'sync.onlineDb.pushAll'   => [ProductsController::class, 'syncAllToOnline'],
 
         // Inventory Management
         'inventory.warehouses'    => [InventoryController::class, 'warehouses'],
