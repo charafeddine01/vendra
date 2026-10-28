@@ -26,6 +26,8 @@ class PosController
         // 4. Products with Stock Levels (Main Warehouse 1)
         $warehouseId = (int)($payload['warehouse_id'] ?? 1);
         $sql = 'SELECT p.*,
+                       p.pack_price, p.pack_barcode, p.pack_quantity,
+                       p.min_order_price, p.min_order_qty,
                        COALESCE(si.quantity, 0) as stock_quantity,
                        u.code as unit_code, u.is_fractional,
                        tr.rate_percent as tax_rate_percent
@@ -38,6 +40,17 @@ class PosController
         $stmt = $pdo->prepare($sql);
         $stmt->execute([':wh' => $warehouseId]);
         $products = $stmt->fetchAll();
+
+        // Attach extra barcodes to each product
+        $extraBarcodesAll = $pdo->query('SELECT * FROM `product_barcodes` ORDER BY `product_id` ASC')->fetchAll();
+        $extraByProduct = [];
+        foreach ($extraBarcodesAll as $eb) {
+            $extraByProduct[(int)$eb['product_id']][] = $eb;
+        }
+        foreach ($products as &$prod) {
+            $prod['extra_barcodes'] = $extraByProduct[(int)$prod['id']] ?? [];
+        }
+        unset($prod);
 
         // 5. Variants
         $variants = $pdo->query('SELECT * FROM `product_variants` ORDER BY `id` ASC')->fetchAll();
@@ -580,6 +593,75 @@ class PosController
         Response::success([
             'order' => $order,
             'items' => $items,
+        ]);
+    }
+
+    public static function listOrders(array $payload): void
+    {
+        $pdo = Database::getInstance();
+        $search = trim((string)($payload['search'] ?? ''));
+        $limit = max(1, min(100, (int)($payload['limit'] ?? 50)));
+        $page = max(1, (int)($payload['page'] ?? 1));
+        $offset = ($page - 1) * $limit;
+        $orderDir = strtoupper((string)($payload['order'] ?? 'DESC')) === 'ASC' ? 'ASC' : 'DESC';
+
+        $where = ["o.`status` != 'HELD'"];
+        $params = [];
+
+        if (!empty($search)) {
+            $where[] = '(o.`invoice_number` LIKE :q1 OR c.`name` LIKE :q2 OR c.`phone` LIKE :q3 OR EXISTS (
+                SELECT 1 FROM `order_items` oi 
+                WHERE oi.`order_id` = o.`id` 
+                AND (oi.`product_name` LIKE :q4 OR oi.`sku` LIKE :q5 OR oi.`barcode` LIKE :q6)
+            ))';
+            $q = "%{$search}%";
+            $params[':q1'] = $q;
+            $params[':q2'] = $q;
+            $params[':q3'] = $q;
+            $params[':q4'] = $q;
+            $params[':q5'] = $q;
+            $params[':q6'] = $q;
+        }
+
+        $whereSql = implode(' AND ', $where);
+
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM `orders` o LEFT JOIN `customers` c ON o.`customer_id` = c.`id` WHERE {$whereSql}");
+        $countStmt->execute($params);
+        $total = (int)$countStmt->fetchColumn();
+
+        $stmt = $pdo->prepare("SELECT o.*, u.`full_name` as `cashier_name`, c.`name` as `customer_name`, c.`phone` as `customer_phone`
+                               FROM `orders` o
+                               LEFT JOIN `users` u ON o.`cashier_id` = u.`id`
+                               LEFT JOIN `customers` c ON o.`customer_id` = c.`id`
+                               WHERE {$whereSql}
+                               ORDER BY o.`id` {$orderDir}
+                               LIMIT {$limit} OFFSET {$offset}");
+        $stmt->execute($params);
+        $orders = $stmt->fetchAll();
+
+        if (!empty($orders)) {
+            $orderIds = array_column($orders, 'id');
+            $inPlaceholders = implode(',', array_fill(0, count($orderIds), '?'));
+            $itemsStmt = $pdo->prepare("SELECT oi.*, p.`image_url` FROM `order_items` oi LEFT JOIN `products` p ON oi.`product_id` = p.`id` WHERE oi.`order_id` IN ({$inPlaceholders})");
+            $itemsStmt->execute($orderIds);
+            $allItems = $itemsStmt->fetchAll();
+
+            $groupedItems = [];
+            foreach ($allItems as $item) {
+                $groupedItems[$item['order_id']][] = $item;
+            }
+
+            foreach ($orders as &$ord) {
+                $ord['items'] = $groupedItems[$ord['id']] ?? [];
+            }
+            unset($ord);
+        }
+
+        Response::success([
+            'orders' => $orders,
+            'total'  => $total,
+            'page'   => $page,
+            'limit'  => $limit,
         ]);
     }
 }

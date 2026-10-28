@@ -112,6 +112,28 @@ export const CartList: React.FC<Props> = ({
         )}
       </div>
 
+      {/* High-Visibility POS Banner (Delta POS inspired) */}
+      <div className="px-3 py-2 bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-blue-500/15 border-b border-slate-800 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-bold text-slate-300">
+            عدد الأصناف:
+          </span>
+          <span className="bg-amber-400 text-slate-950 font-black px-2 py-0.5 rounded-lg text-xs font-mono shadow-sm">
+            {items.reduce((sum, it) => sum + it.quantity, 0)}
+          </span>
+        </div>
+        <div className="text-right">
+          <div className="text-base font-black text-emerald-400 font-mono tracking-tight leading-none">
+            {primarySymbol}{grandTotal.toFixed(2)}
+          </div>
+          {grandTotalSecondary > 0 && (
+            <div className="text-[10px] text-slate-400 font-mono font-medium leading-none mt-0.5">
+              {secondarySymbol}{grandTotalSecondary.toFixed(2)}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Cart Items List */}
       <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
         {items.length === 0 ? (

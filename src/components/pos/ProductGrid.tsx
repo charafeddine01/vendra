@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Product, Category, CompanySettings } from '../../types';
 import { I18nService } from '../../services/i18nService';
-import { Search, Camera, Scale, Sparkles, Layers, Package } from 'lucide-react';
+import { Search, Camera, Scale, Sparkles, Layers, Package, Receipt } from 'lucide-react';
 
 interface Props {
   products: Product[];
@@ -9,6 +9,8 @@ interface Props {
   settings: CompanySettings | null;
   onSelectProduct: (product: Product) => void;
   onOpenScanner: () => void;
+  onBarcodeScanned?: (barcode: string) => void;
+  onOpenReceipts?: () => void;
 }
 
 export const ProductGrid: React.FC<Props> = ({
@@ -17,9 +19,44 @@ export const ProductGrid: React.FC<Props> = ({
   settings,
   onSelectProduct,
   onOpenScanner,
+  onBarcodeScanned,
+  onOpenReceipts,
 }) => {
   const [selectedCatId, setSelectedCatId] = useState<number | 'ALL'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const barcodeBufferRef = useRef('');
+  const lastKeyTimeRef = useRef(0);
+
+  // Global keydown listener: capture rapid barcode scanner input
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // If user is typing in an input/textarea, ignore (unless it's the barcode field)
+      const target = e.target as HTMLElement;
+      const isInInput = (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && target !== barcodeInputRef.current;
+      if (isInInput) return;
+
+      const now = Date.now();
+      if (e.key === 'Enter') {
+        const barcode = barcodeBufferRef.current.trim();
+        if (barcode.length >= 3 && onBarcodeScanned) {
+          onBarcodeScanned(barcode);
+        }
+        barcodeBufferRef.current = '';
+      } else if (e.key.length === 1) {
+        // Barcode scanner sends chars very fast (< 50ms apart)
+        if (now - lastKeyTimeRef.current > 500) {
+          barcodeBufferRef.current = '';
+        }
+        barcodeBufferRef.current += e.key;
+      }
+      lastKeyTimeRef.current = now;
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onBarcodeScanned]);
 
   const primarySymbol = settings?.primary_currency_symbol || '$';
   const secondarySymbol = settings?.secondary_currency_symbol || '€';
@@ -40,6 +77,8 @@ export const ProductGrid: React.FC<Props> = ({
         (p.name_ar && p.name_ar.toLowerCase().includes(q)) ||
         p.sku.toLowerCase().includes(q) ||
         (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+        (p.pack_barcode && p.pack_barcode.toLowerCase().includes(q)) ||
+        (p.extra_barcodes && p.extra_barcodes.some((eb) => eb.barcode && eb.barcode.toLowerCase().includes(q))) ||
         (p.scale_plu && p.scale_plu.includes(q))
       );
     });
@@ -55,6 +94,19 @@ export const ProductGrid: React.FC<Props> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const code = searchQuery.trim();
+                if (code) {
+                  if (onBarcodeScanned) {
+                    onBarcodeScanned(code);
+                  }
+                  // Reset textbox immediately after scanning/enter
+                  setSearchQuery('');
+                }
+              }
+            }}
             placeholder={I18nService.t('common.search')}
             className="w-full bg-slate-800 border border-slate-700/80 rounded-2xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
           />
@@ -76,6 +128,17 @@ export const ProductGrid: React.FC<Props> = ({
           <Camera className="w-4 h-4 text-blue-400" />
           <span className="hidden sm:inline">{I18nService.t('pos.barcode_camera')}</span>
         </button>
+
+        {onOpenReceipts && (
+          <button
+            onClick={onOpenReceipts}
+            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 p-2.5 rounded-2xl text-emerald-400 hover:text-white transition flex items-center gap-1.5 text-xs font-semibold shrink-0 shadow-sm"
+            title="Receipt History / Last Receipt (F9)"
+          >
+            <Receipt className="w-4 h-4 text-emerald-400" />
+            <span className="hidden sm:inline font-bold">Last Receipt</span>
+          </button>
+        )}
       </div>
 
       {/* Category Pills Bar */}

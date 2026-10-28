@@ -117,6 +117,12 @@ class ProductsController
         $isKitchen = !empty($payload['is_kitchen_item']) ? 1 : 0;
         $kitchenStation = $payload['kitchen_station'] ?? 'Kitchen';
         $warrantyMonths = (int)($payload['warranty_months'] ?? 0);
+        $packPrice = (float)($payload['pack_price'] ?? 0);
+        $packBarcode = trim((string)($payload['pack_barcode'] ?? '')) ?: null;
+        $packQuantity = (int)($payload['pack_quantity'] ?? 1);
+        $minOrderPrice = (float)($payload['min_order_price'] ?? 0);
+        $minOrderQty = (int)($payload['min_order_qty'] ?? 1);
+        $extraBarcodes = !empty($payload['extra_barcodes']) && is_array($payload['extra_barcodes']) ? $payload['extra_barcodes'] : [];
 
         if (empty($name)) {
             Response::error('Product name is required.', 400);
@@ -134,6 +140,8 @@ class ProductsController
                     `sku` = :sku, `barcode` = :bc, `name` = :name, `name_ar` = :name_ar,
                     `category_id` = :cid, `unit_id` = :uid, `tax_rate_id` = :trid, `type` = :type,
                     `cost_price` = :cost, `selling_price` = :price, `secondary_selling_price` = :sec_price,
+                    `pack_price` = :pack_price, `pack_barcode` = :pack_bc, `pack_quantity` = :pack_qty,
+                    `min_order_price` = :min_price, `min_order_qty` = :min_qty,
                     `track_inventory` = :track, `alert_quantity` = :alert, `scale_plu` = :plu,
                     `image_url` = :img, `modifiers_schema` = :modifiers, `is_kitchen_item` = :kitch,
                     `kitchen_station` = :station, `warranty_months` = :warr
@@ -142,6 +150,8 @@ class ProductsController
                     ':sku' => $sku, ':bc' => $barcode, ':name' => $name, ':name_ar' => $nameAr,
                     ':cid' => $categoryId, ':uid' => $unitId, ':trid' => $taxRateId, ':type' => $type,
                     ':cost' => $costPrice, ':price' => $sellingPrice, ':sec_price' => $secPrice,
+                    ':pack_price' => $packPrice, ':pack_bc' => $packBarcode, ':pack_qty' => $packQuantity,
+                    ':min_price' => $minOrderPrice, ':min_qty' => $minOrderQty,
                     ':track' => $trackInventory, ':alert' => $alertQty, ':plu' => $scalePlu,
                     ':img' => $imageUrl, ':modifiers' => $modifiers, ':kitch' => $isKitchen,
                     ':station' => $kitchenStation, ':warr' => $warrantyMonths, ':id' => $id,
@@ -153,11 +163,13 @@ class ProductsController
                 $sql = 'INSERT INTO `products` (
                     `sku`, `barcode`, `name`, `name_ar`, `category_id`, `unit_id`, `tax_rate_id`,
                     `type`, `cost_price`, `selling_price`, `secondary_selling_price`,
+                    `pack_price`, `pack_barcode`, `pack_quantity`, `min_order_price`, `min_order_qty`,
                     `track_inventory`, `alert_quantity`, `scale_plu`, `image_url`,
                     `modifiers_schema`, `is_kitchen_item`, `kitchen_station`, `warranty_months`
                 ) VALUES (
                     :sku, :bc, :name, :name_ar, :cid, :uid, :trid,
                     :type, :cost, :price, :sec_price,
+                    :pack_price, :pack_bc, :pack_qty, :min_price, :min_qty,
                     :track, :alert, :plu, :img,
                     :modifiers, :kitch, :station, :warr
                 )';
@@ -165,6 +177,8 @@ class ProductsController
                     ':sku' => $sku, ':bc' => $barcode, ':name' => $name, ':name_ar' => $nameAr,
                     ':cid' => $categoryId, ':uid' => $unitId, ':trid' => $taxRateId,
                     ':type' => $type, ':cost' => $costPrice, ':price' => $sellingPrice, ':sec_price' => $secPrice,
+                    ':pack_price' => $packPrice, ':pack_bc' => $packBarcode, ':pack_qty' => $packQuantity,
+                    ':min_price' => $minOrderPrice, ':min_qty' => $minOrderQty,
                     ':track' => $trackInventory, ':alert' => $alertQty, ':plu' => $scalePlu, ':img' => $imageUrl,
                     ':modifiers' => $modifiers, ':kitch' => $isKitchen, ':station' => $kitchenStation, ':warr' => $warrantyMonths,
                 ];
@@ -208,6 +222,21 @@ class ProductsController
                         ':ipid' => (int)$rec['ingredient_product_id'],
                         ':qty' => (float)$rec['quantity'],
                         ':uid' => (int)($rec['unit_id'] ?? 1),
+                    ]);
+                }
+            }
+
+            // Save extra barcodes
+            $pdo->prepare('DELETE FROM `product_barcodes` WHERE `product_id` = :pid')->execute([':pid' => $productId]);
+            if (!empty($extraBarcodes)) {
+                $stmtInsBarcode = $pdo->prepare('INSERT INTO `product_barcodes` (`product_id`, `barcode`, `label`) VALUES (:pid, :bc, :label)');
+                foreach ($extraBarcodes as $eb) {
+                    $ebBarcode = trim((string)($eb['barcode'] ?? ''));
+                    if (empty($ebBarcode)) continue;
+                    $stmtInsBarcode->execute([
+                        ':pid'   => $productId,
+                        ':bc'    => $ebBarcode,
+                        ':label' => $eb['label'] ?? null,
                     ]);
                 }
             }

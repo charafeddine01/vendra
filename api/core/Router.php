@@ -67,6 +67,8 @@ class Router
         'pos.order.deleteHeld'    => [PosController::class, 'deleteHeld'],
         'pos.order.syncBatch'     => [PosController::class, 'syncBatch'],
         'pos.invoice.lookup'      => [PosController::class, 'lookupInvoice'],
+        'pos.orders.list'         => [PosController::class, 'listOrders'],
+        'pos.order.list'          => [PosController::class, 'listOrders'],
 
         // Shifts & Cash Drawer
         'shifts.getCurrent'       => [ShiftsController::class, 'getCurrent'],

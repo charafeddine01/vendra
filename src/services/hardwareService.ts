@@ -54,14 +54,14 @@ export interface CustomerDisplayPayload {
 export class HardwareService {
   private static scannerBuffer: string = '';
   private static lastKeyTime: number = 0;
-  // STRICT CONSTRAINT: <30ms buffer time between keystrokes indicates a hardware HID barcode gun
-  private static readonly MAX_SCANNER_INTERVAL_MS = 30;
+  // USB/Bluetooth HID barcode scanners typically transmit keystrokes at 10-60ms intervals
+  private static readonly MAX_SCANNER_INTERVAL_MS = 65;
   private static scannerListeners: Array<(barcode: string) => void> = [];
   private static customerDisplayChannel: BroadcastChannel | null = null;
 
   /**
    * 1. Global USB/Bluetooth HID Barcode Scanner Listener
-   * Detects rapid keystroke bursts (<30ms per character).
+   * Detects rapid keystroke bursts (<65ms per character).
    * Works globally even if an input element is focused without polluting regular text typing.
    */
   public static initScannerListener(): () => void {
@@ -85,11 +85,18 @@ export class HardwareService {
           event.preventDefault();
           event.stopPropagation();
 
-          // If the burst was entered into a regular input, clear the raw barcode string from it
+          // If the burst was entered into a regular input, reset/clear the value completely so textbox does not keep old text
           if (isInput && target instanceof HTMLInputElement) {
-            if (target.value.endsWith(barcode)) {
-              target.value = target.value.slice(0, -barcode.length);
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+              window.HTMLInputElement.prototype,
+              'value'
+            )?.set;
+            if (nativeInputValueSetter) {
+              nativeInputValueSetter.call(target, '');
+            } else {
+              target.value = '';
             }
+            target.dispatchEvent(new Event('input', { bubbles: true }));
           }
 
           this.notifyBarcodeScanned(barcode);

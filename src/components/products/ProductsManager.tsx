@@ -14,7 +14,8 @@ import {
   Scale,
   Printer,
   CheckCircle2,
-  X
+  X,
+  DollarSign
 } from 'lucide-react';
 
 interface Props {
@@ -282,26 +283,131 @@ export const ProductsManager: React.FC<Props> = ({ settings }) => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">Cost Price ($)</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    value={editingProduct.cost_price ?? 0}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, cost_price: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none"
-                  />
+              {/* Extra Barcodes Section */}
+              <div className="pt-3 border-t border-slate-800">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-bold text-slate-400">Extra Barcodes</h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const current = (editingProduct as any).extra_barcodes || [];
+                      setEditingProduct({ ...editingProduct, extra_barcodes: [...current, { barcode: '', label: '' }] } as any);
+                    }}
+                    className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" /> Add Barcode
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">Selling Price ($)</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    value={editingProduct.selling_price ?? 0}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, selling_price: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono font-bold focus:outline-none"
-                  />
+                {((editingProduct as any).extra_barcodes || []).map((eb: any, idx: number) => (
+                  <div key={idx} className="flex gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={eb.barcode}
+                      onChange={(e) => {
+                        const arr = [...((editingProduct as any).extra_barcodes || [])];
+                        arr[idx] = { ...arr[idx], barcode: e.target.value };
+                        setEditingProduct({ ...editingProduct, extra_barcodes: arr } as any);
+                      }}
+                      placeholder="Barcode"
+                      className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                    />
+                    <input
+                      type="text"
+                      value={eb.label || ''}
+                      onChange={(e) => {
+                        const arr = [...((editingProduct as any).extra_barcodes || [])];
+                        arr[idx] = { ...arr[idx], label: e.target.value };
+                        setEditingProduct({ ...editingProduct, extra_barcodes: arr } as any);
+                      }}
+                      placeholder="Label (e.g. Pack)"
+                      className="w-24 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const arr = ((editingProduct as any).extra_barcodes || []).filter((_: any, i: number) => i !== idx);
+                        setEditingProduct({ ...editingProduct, extra_barcodes: arr } as any);
+                      }}
+                      className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {((editingProduct as any).extra_barcodes || []).length === 0 && (
+                  <p className="text-xs text-slate-500">No extra barcodes. Click "Add Barcode" to add alternatives.</p>
+                )}
+              </div>
+
+              {/* 3-Tier Pricing Section */}
+              <div className="pt-3 border-t border-slate-800">
+                <h4 className="text-xs font-bold text-amber-400 mb-3 flex items-center gap-2">
+                  <DollarSign className="w-3.5 h-3.5" /> Pricing Tiers
+                </h4>
+
+                {/* Unit Price (existing selling_price) */}
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">Unit Price</label>
+                    <input type="number" step="0.0001" value={editingProduct.selling_price ?? 0}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, selling_price: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">Cost Price</label>
+                    <input type="number" step="0.0001" value={editingProduct.cost_price ?? 0}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, cost_price: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none" />
+                  </div>
+                </div>
+
+                {/* Pack Price */}
+                <div className="bg-slate-800/50 rounded-xl p-3 mb-3 space-y-2">
+                  <div className="text-xs font-semibold text-blue-400 mb-2">📦 Pack / Carton</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1">Pack Price</label>
+                      <input type="number" step="0.01" value={(editingProduct as any).pack_price ?? ''}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, pack_price: parseFloat(e.target.value) || 0 } as any)}
+                        placeholder="0.00"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1">Units/Pack</label>
+                      <input type="number" min="1" value={(editingProduct as any).pack_quantity ?? ''}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, pack_quantity: parseInt(e.target.value) || 1 } as any)}
+                        placeholder="e.g. 12"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1">Pack Barcode</label>
+                      <input type="text" value={(editingProduct as any).pack_barcode ?? ''}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, pack_barcode: e.target.value } as any)}
+                        placeholder="Scan or type"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-blue-500" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Min Order Price */}
+                <div className="bg-slate-800/50 rounded-xl p-3 space-y-2">
+                  <div className="text-xs font-semibold text-emerald-400 mb-2">🛒 Minimum Order</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1">Min Order Price</label>
+                      <input type="number" step="0.01" value={(editingProduct as any).min_order_price ?? ''}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, min_order_price: parseFloat(e.target.value) || 0 } as any)}
+                        placeholder="0.00"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1">Min Order Qty</label>
+                      <input type="number" min="1" value={(editingProduct as any).min_order_qty ?? ''}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, min_order_qty: parseInt(e.target.value) || 1 } as any)}
+                        placeholder="e.g. 6"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-blue-500" />
+                    </div>
+                  </div>
                 </div>
               </div>
 

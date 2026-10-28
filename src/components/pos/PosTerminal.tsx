@@ -15,11 +15,13 @@ import { CustomerSelectModal } from './CustomerSelectModal';
 import { ThermalReceiptModal } from './ThermalReceiptModal';
 import { HeldOrdersModal } from './HeldOrdersModal';
 import { CameraScannerModal } from './CameraScannerModal';
+import { ReceiptBrowserModal } from './ReceiptBrowserModal';
 import { ApiService } from '../../services/api';
 import { HardwareService } from '../../services/hardwareService';
 import { OfflineSyncService } from '../../services/offlineSyncService';
 import { SoundService } from '../../services/soundService';
 import { I18nService } from '../../services/i18nService';
+import { Receipt } from 'lucide-react';
 
 interface Props {
   settings: CompanySettings | null;
@@ -42,6 +44,7 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
   const [isHeldModalOpen, setIsHeldModalOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [lastCompletedOrder, setLastCompletedOrder] = useState<any | null>(null);
+  const [isReceiptBrowserOpen, setIsReceiptBrowserOpen] = useState(false);
 
   // Load catalog & held orders
   const loadCatalog = useCallback(async () => {
@@ -97,98 +100,33 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
     });
   }, [cartItems, settings]);
 
-  // Handle scanned barcodes (from hardware USB/Bluetooth scanner or camera)
-  const handleBarcodeScanned = useCallback((rawBarcode: string) => {
-    SoundService.playBeep();
-
-    // 1. Check Supermarket Scale Barcode (EAN-13 prefixes 20 - 29)
-    const scaleParsed = HardwareService.parseScaleBarcode(rawBarcode, settings?.scale_barcode_prefix || '21');
-    if (scaleParsed.isScaleBarcode) {
-      const matchedScaleProduct = products.find(
-        (p) => p.scale_plu === scaleParsed.plu || p.scale_plu === scaleParsed.plu.replace(/^0+/, '')
-      );
-
-      if (matchedScaleProduct) {
-        addScaleProductToCart(matchedScaleProduct, scaleParsed.weightKg, rawBarcode);
-        return;
-      }
+  // 1. Helper to calculate price tier based on quantity (Unit price vs Minimum order price)
+  const getProductPriceForQty = useCallback((product: Product, qty: number): number => {
+    if (
+      product.min_order_qty &&
+      product.min_order_qty > 0 &&
+      qty >= product.min_order_qty &&
+      product.min_order_price &&
+      Number(product.min_order_price) > 0
+    ) {
+      return Number(product.min_order_price);
     }
+    return Number(product.selling_price);
+  }, []);
 
-    // 2. Standard Product Barcode or Multi-Unit match
-    const matched = products.find((p) => {
-      if (p.barcode && p.barcode.toLowerCase() === rawBarcode.toLowerCase()) return true;
-      if (p.sku && p.sku.toLowerCase() === rawBarcode.toLowerCase()) return true;
-      return false;
-    });
-
-    if (matched) {
-      addProductToCart(matched);
-      return;
-    }
-
-    SoundService.playError();
-    alert(`Scanned item '${rawBarcode}' not found in active catalog.`);
-  }, [products, settings]);
-
-  // Setup Global HID Barcode Scanner Listener
-  useEffect(() => {
-    const unsubScanner = HardwareService.onBarcode(handleBarcodeScanned);
-    return () => unsubScanner();
-  }, [handleBarcodeScanned]);
-
-  // Keyboard Shortcuts bar (F1-F12)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Check F1 - Search focus
-      if (e.key === 'F1') {
-        e.preventDefault();
-        const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;
-        if (searchInput) searchInput.focus();
-      }
-      // F2 - Camera scanner
-      else if (e.key === 'F2') {
-        e.preventDefault();
-        setIsCameraOpen(true);
-      }
-      // F6 - Hold Order
-      else if (e.key === 'F6') {
-        e.preventDefault();
-        handleHoldOrder();
-      }
-      // F7 - Recall
-      else if (e.key === 'F7') {
-        e.preventDefault();
-        setIsHeldModalOpen(true);
-      }
-      // F8 - Clear
-      else if (e.key === 'F8') {
-        e.preventDefault();
-        handleClearCart();
-      }
-      // F12 - Charge / Pay
-      else if (e.key === 'F12') {
-        e.preventDefault();
-        if (cartItems.length > 0) setIsPaymentOpen(true);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cartItems]);
-
-  // Add standard product to cart
-  const addProductToCart = (product: Product, quantity: number = 1) => {
+  // 2. Add standard product to cart (auto applies unit or minimum order price)
+  const addProductToCart = useCallback((product: Product, quantity: number = 1) => {
     SoundService.playBeep();
 
     setCartItems((prev) => {
-      const existingIdx = prev.findIndex((it) => it.product_id === product.id && !it.variant_id);
-      const unitPrice = Number(product.selling_price);
+      const existingIdx = prev.findIndex((it) => it.product_id === product.id && !it.variant_id && it.notes !== 'PACK');
       const taxRate = Number(product.tax_rate_percent || settings?.default_tax_rate || 0);
 
       if (existingIdx !== -1) {
         const item = prev[existingIdx];
         const newQty = item.quantity + quantity;
-        const lineSubtotal = newQty * item.unit_price;
+        const unitPrice = getProductPriceForQty(product, newQty);
+        const lineSubtotal = newQty * unitPrice;
         const lineTax = lineSubtotal * (taxRate / 100);
         const lineTotal = lineSubtotal + lineTax - item.discount_amount;
 
@@ -196,11 +134,13 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
         updated[existingIdx] = {
           ...item,
           quantity: newQty,
+          unit_price: unitPrice,
           tax_amount: lineTax,
           line_total: lineTotal,
         };
         return updated;
       } else {
+        const unitPrice = getProductPriceForQty(product, quantity);
         const lineSubtotal = quantity * unitPrice;
         const lineTax = lineSubtotal * (taxRate / 100);
         const lineTotal = lineSubtotal + lineTax;
@@ -229,10 +169,118 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
         return [...prev, newItem];
       }
     });
-  };
+  }, [settings, getProductPriceForQty]);
 
-  // Add weighed supermarket scale product
-  const addScaleProductToCart = (product: Product, weightKg: number, rawBarcode: string) => {
+  // 3. Add pack product (wholesale / pack price with pack barcode)
+  const addPackProductToCart = useCallback((product: Product) => {
+    SoundService.playBeep();
+    const packQty = product.pack_quantity && product.pack_quantity > 0 ? product.pack_quantity : 1;
+    const packPrice =
+      product.pack_price && Number(product.pack_price) > 0
+        ? Number(product.pack_price)
+        : Number(product.selling_price) * packQty;
+    const taxRate = Number(product.tax_rate_percent || settings?.default_tax_rate || 0);
+
+    setCartItems((prev) => {
+      const existingIdx = prev.findIndex((it) => it.product_id === product.id && it.notes === 'PACK');
+      if (existingIdx !== -1) {
+        const item = prev[existingIdx];
+        const newQty = item.quantity + 1;
+        const lineSubtotal = newQty * item.unit_price;
+        const lineTax = lineSubtotal * (taxRate / 100);
+        const lineTotal = lineSubtotal + lineTax - item.discount_amount;
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...item,
+          quantity: newQty,
+          tax_amount: lineTax,
+          line_total: lineTotal,
+        };
+        return updated;
+      }
+
+      const lineTax = packPrice * (taxRate / 100);
+      const newItem: CartItem = {
+        id: 'PACK-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+        product_id: product.id,
+        product_name: `${product.name} (Pack x${packQty})`,
+        sku: product.sku,
+        barcode: product.pack_barcode || product.barcode,
+        unit_id: product.unit_id,
+        unit_code: 'pack',
+        is_fractional: false,
+        quantity: 1,
+        unit_cost: Number(product.cost_price || 0) * packQty,
+        unit_price: packPrice,
+        original_unit_price: packPrice,
+        discount_amount: 0,
+        discount_percent: 0,
+        tax_rate: taxRate,
+        tax_amount: lineTax,
+        line_total: packPrice + lineTax,
+        modifiers: [],
+        notes: 'PACK',
+        is_kitchen_item: product.is_kitchen_item,
+      };
+      return [...prev, newItem];
+    });
+  }, [settings]);
+
+  // 4. Add multi-unit product (e.g. Box / Carton from product_units)
+  const addProductUnitToCart = useCallback((product: Product, unit: any) => {
+    SoundService.playBeep();
+    const factor = Number(unit.conversion_factor || 1);
+    const unitPrice = Number(unit.selling_price) || (Number(product.selling_price) * factor);
+    const taxRate = Number(product.tax_rate_percent || settings?.default_tax_rate || 0);
+
+    setCartItems((prev) => {
+      const existingIdx = prev.findIndex((it) => it.product_id === product.id && it.selected_unit_id === unit.id);
+      if (existingIdx !== -1) {
+        const item = prev[existingIdx];
+        const newQty = item.quantity + 1;
+        const lineSubtotal = newQty * item.unit_price;
+        const lineTax = lineSubtotal * (taxRate / 100);
+        const lineTotal = lineSubtotal + lineTax - item.discount_amount;
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...item,
+          quantity: newQty,
+          tax_amount: lineTax,
+          line_total: lineTotal,
+        };
+        return updated;
+      }
+
+      const lineTax = unitPrice * (taxRate / 100);
+      const newItem: CartItem = {
+        id: 'UNIT-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+        product_id: product.id,
+        product_name: `${product.name} (${unit.unit_name || unit.unit_code || 'Unit'})`,
+        sku: product.sku,
+        barcode: unit.barcode,
+        unit_id: unit.unit_id,
+        unit_code: unit.unit_code || 'unit',
+        is_fractional: false,
+        quantity: 1,
+        unit_cost: Number(product.cost_price || 0) * factor,
+        unit_price: unitPrice,
+        original_unit_price: unitPrice,
+        discount_amount: 0,
+        discount_percent: 0,
+        tax_rate: taxRate,
+        tax_amount: lineTax,
+        line_total: unitPrice + lineTax,
+        selected_unit_id: unit.id,
+        unit_conversion_factor: factor,
+        modifiers: [],
+        is_kitchen_item: product.is_kitchen_item,
+      };
+      return [...prev, newItem];
+    });
+  }, [settings]);
+
+  // 5. Add weighed supermarket scale product
+  const addScaleProductToCart = useCallback((product: Product, weightKg: number, rawBarcode: string) => {
     SoundService.playBeep();
 
     setCartItems((prev) => {
@@ -265,9 +313,81 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
       };
       return [...prev, newItem];
     });
-  };
+  }, []);
 
-  // Update item quantity
+  // 6. Handle scanned barcodes (from hardware USB/Bluetooth scanner or camera)
+  const handleBarcodeScanned = useCallback((rawBarcode: string) => {
+    const cleaned = (rawBarcode || '').trim();
+    if (!cleaned) return;
+    const lower = cleaned.toLowerCase();
+    SoundService.playBeep();
+
+    // 1. Supermarket Scale Barcode (EAN-13 prefixes 20 - 29)
+    const scaleParsed = HardwareService.parseScaleBarcode(cleaned, settings?.scale_barcode_prefix || '21');
+    if (scaleParsed.isScaleBarcode) {
+      const matchedScaleProduct = products.find(
+        (p) => p.scale_plu === scaleParsed.plu || p.scale_plu === scaleParsed.plu.replace(/^0+/, '')
+      );
+
+      if (matchedScaleProduct) {
+        addScaleProductToCart(matchedScaleProduct, scaleParsed.weightKg, cleaned);
+        return;
+      }
+    }
+
+    // 2. Check Pack Barcode (Wholesale / Pack Price)
+    const matchedPack = products.find(
+      (p) => p.pack_barcode && p.pack_barcode.trim().toLowerCase() === lower
+    );
+    if (matchedPack) {
+      addPackProductToCart(matchedPack);
+      return;
+    }
+
+    // 3. Check Multi-Unit Barcodes (Carton / Box from product_units)
+    const matchedUnitProd = products.find((p) =>
+      p.units?.some((u) => u.barcode && u.barcode.trim().toLowerCase() === lower)
+    );
+    if (matchedUnitProd) {
+      const unit = matchedUnitProd.units?.find((u) => u.barcode && u.barcode.trim().toLowerCase() === lower);
+      if (unit) {
+        addProductUnitToCart(matchedUnitProd, unit);
+        return;
+      }
+    }
+
+    // 4. Check Extra / Alias Barcodes (product_barcodes)
+    const matchedExtra = products.find((p) =>
+      p.extra_barcodes?.some((eb) => eb.barcode && eb.barcode.trim().toLowerCase() === lower)
+    );
+    if (matchedExtra) {
+      addProductToCart(matchedExtra);
+      return;
+    }
+
+    // 5. Standard Product Barcode or SKU
+    const matched = products.find((p) => {
+      if (p.barcode && p.barcode.trim().toLowerCase() === lower) return true;
+      if (p.sku && p.sku.trim().toLowerCase() === lower) return true;
+      return false;
+    });
+
+    if (matched) {
+      addProductToCart(matched);
+      return;
+    }
+
+    SoundService.playError();
+    alert(`Scanned item '${cleaned}' not found in active catalog.`);
+  }, [products, settings, addScaleProductToCart, addPackProductToCart, addProductUnitToCart, addProductToCart]);
+
+  // Setup Global HID Barcode Scanner Listener
+  useEffect(() => {
+    const unsubScanner = HardwareService.onBarcode(handleBarcodeScanned);
+    return () => unsubScanner();
+  }, [handleBarcodeScanned]);
+
+  // Update item quantity (auto-applies minimum order price tier if eligible)
   const handleUpdateQty = (itemId: string, newQty: number) => {
     if (newQty <= 0) {
       handleRemoveItem(itemId);
@@ -277,12 +397,21 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
     setCartItems((prev) =>
       prev.map((it) => {
         if (it.id !== itemId) return it;
-        const lineSubtotal = newQty * it.unit_price;
+
+        // Auto-apply minimum order price tier if eligible
+        let unitPrice = it.unit_price;
+        const prod = products.find((p) => p.id === it.product_id);
+        if (prod && it.notes !== 'PACK') {
+          unitPrice = getProductPriceForQty(prod, newQty);
+        }
+
+        const lineSubtotal = newQty * unitPrice;
         const lineTax = lineSubtotal * (it.tax_rate / 100);
         const lineTotal = lineSubtotal + lineTax - it.discount_amount;
         return {
           ...it,
           quantity: newQty,
+          unit_price: unitPrice,
           tax_amount: lineTax,
           line_total: lineTotal,
         };
@@ -301,6 +430,53 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
       setCartItems([]);
     }
   };
+
+  // Keyboard Shortcuts bar (F1-F12)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check F1 - Search focus
+      if (e.key === 'F1') {
+        e.preventDefault();
+        const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;
+        if (searchInput) searchInput.focus();
+      }
+      // F2 - Camera scanner
+      else if (e.key === 'F2') {
+        e.preventDefault();
+        setIsCameraOpen(true);
+      }
+      // F6 - Hold Order
+      else if (e.key === 'F6') {
+        e.preventDefault();
+        handleHoldOrder();
+      }
+      // F7 - Recall
+      else if (e.key === 'F7') {
+        e.preventDefault();
+        setIsHeldModalOpen(true);
+      }
+      // F8 - Clear
+      else if (e.key === 'F8') {
+        e.preventDefault();
+        handleClearCart();
+      }
+      // F9 - Receipt Browser
+      else if (e.key === 'F9') {
+        e.preventDefault();
+        setIsReceiptBrowserOpen(true);
+      }
+      // F12 - Charge / Pay
+      else if (e.key === 'F12') {
+        e.preventDefault();
+        if (cartItems.length > 0) setIsPaymentOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [cartItems]);
+
+
 
   // Hold / Park order
   const handleHoldOrder = async () => {
@@ -413,6 +589,8 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
           settings={settings}
           onSelectProduct={(p) => addProductToCart(p)}
           onOpenScanner={() => setIsCameraOpen(true)}
+          onBarcodeScanned={handleBarcodeScanned}
+          onOpenReceipts={() => setIsReceiptBrowserOpen(true)}
         />
 
         {/* Keyboard Shortcut Helper Bar (F1-F12) */}
@@ -423,6 +601,15 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
             <span><kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded">F6</kbd> Hold</span>
             <span><kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded">F7</kbd> Recall</span>
             <span><kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded">F8</kbd> Clear</span>
+            <button
+              onClick={() => setIsReceiptBrowserOpen(true)}
+              className="flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 font-bold bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 px-2 py-0.5 rounded transition shadow-sm cursor-pointer"
+              title="View Old Receipts / Last Receipt (F9)"
+            >
+              <kbd className="bg-emerald-700 text-white px-1 py-0.2 rounded text-[10px]">F9</kbd>
+              <Receipt className="w-3.5 h-3.5" />
+              <span>Last Receipt / أرشيف الفواتير</span>
+            </button>
             <span><kbd className="bg-blue-600 text-white px-1 py-0.5 rounded font-bold">F12</kbd> Pay</span>
           </div>
           <span className="text-[10px] text-emerald-400 font-semibold">HID Barcode Scanner Ready</span>
@@ -515,6 +702,13 @@ export const PosTerminal: React.FC<Props> = ({ settings, activeShift, onOpenShif
         isOpen={isCameraOpen}
         onClose={() => setIsCameraOpen(false)}
         onScan={handleBarcodeScanned}
+      />
+
+      {/* Receipt Browser Modal */}
+      <ReceiptBrowserModal
+        isOpen={isReceiptBrowserOpen}
+        settings={settings}
+        onClose={() => setIsReceiptBrowserOpen(false)}
       />
     </div>
   );

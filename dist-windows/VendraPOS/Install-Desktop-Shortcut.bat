@@ -51,3 +51,13 @@ if %ERRORLEVEL% equ 0 (
     echo You can run Vendra directly by double-clicking VendraPOS.bat.
     pause
 )
+
+:: Ask user if they want autostart
+echo.
+set /p AUTOSTART="Add Vendra POS to Windows Startup (auto-launch on login)? [Y/N]: "
+if /i "%AUTOSTART%"=="Y" (
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "VendraPOS" /t REG_SZ /d "wscript.exe \"%APP_DIR%\Launch-VendraPOS.vbs\"" /f >nul
+    echo [SUCCESS] Vendra POS added to Windows Startup.
+) else (
+    echo [SKIPPED] Autostart not configured.
+)

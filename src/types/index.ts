@@ -123,6 +123,13 @@ export interface ProductRecipe {
   unit_id: number;
 }
 
+export interface ProductBarcode {
+  id?: number;
+  product_id?: number;
+  barcode: string;
+  label?: string;  // e.g. "Pack", "Box", "Carton"
+}
+
 export interface Product {
   id: number;
   sku: string;
@@ -140,6 +147,14 @@ export interface Product {
   cost_price: number;
   selling_price: number;
   secondary_selling_price?: number;
+  // Multi-price tiers
+  pack_price?: number;          // Price per pack
+  pack_barcode?: string;        // Barcode for the pack
+  pack_quantity?: number;       // Units per pack
+  min_order_price?: number;     // Minimum order price
+  min_order_qty?: number;       // Minimum order quantity (configurable)
+  // Extra barcodes
+  extra_barcodes?: ProductBarcode[];
   track_inventory: number;
   alert_quantity: number;
   stock_quantity?: number;

@@ -16,7 +16,9 @@ import {
   Globe,
   Sliders,
   DollarSign,
-  HardDrive
+  HardDrive,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 
 interface Props {
@@ -43,6 +45,15 @@ export const TopBar: React.FC<Props> = ({
   const [backupStatus, setBackupStatus] = useState<'IDLE' | 'SYNCING' | 'SUCCESS' | 'ERROR'>('IDLE');
   const [timeStr, setTimeStr] = useState('');
   const [lang, setLang] = useState<LanguageCode>(I18nService.getLanguage());
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -64,12 +75,25 @@ export const TopBar: React.FC<Props> = ({
       setTimeStr(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     }, 1000);
 
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+
+    const handleF11 = (e: KeyboardEvent) => {
+      if (e.key === 'F11') {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+    };
+    window.addEventListener('keydown', handleF11);
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       unsubscribeSync();
       unsubscribeBackup();
       clearInterval(timer);
+      document.removeEventListener('fullscreenchange', onFsChange);
+      window.removeEventListener('keydown', handleF11);
     };
   }, []);
 
@@ -194,6 +218,15 @@ export const TopBar: React.FC<Props> = ({
           <Clock className="w-3 h-3 text-slate-400" />
           <span>{timeStr}</span>
         </div>
+
+        {/* Fullscreen Toggle */}
+        <button
+          onClick={toggleFullscreen}
+          title={isFullscreen ? 'Exit Fullscreen (F11)' : 'Enter Fullscreen (F11)'}
+          className="p-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-400 hover:text-white transition"
+        >
+          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+        </button>
 
         {/* Language Switcher */}
         <button
