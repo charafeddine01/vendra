@@ -4,7 +4,10 @@ node_modules/
 *.log
 *.zip
 !public_html/downloads/*.zip
+!public_html/downloads/*.exe
 *.tar.xz
+.cache/
+dist-windows/*.exe
 *.sqlite
 *.sqlite3
 *.db
