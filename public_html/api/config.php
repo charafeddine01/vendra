@@ -9,9 +9,10 @@ declare(strict_types=1);
 $envFile = __DIR__ . '/config/env.php';
 $customEnv = file_exists($envFile) ? (require $envFile) : [];
 $dbCustom = $customEnv['db'] ?? [];
+$onlineDbCustom = $customEnv['online_db'] ?? [];
 
 return [
-    // Database Configuration (Prioritize env.php written by Web Installer, fallback to getenv or sqlite)
+    // Primary / Local Database Configuration (SQLite or local MySQL)
     'db' => [
         'driver'    => $dbCustom['driver'] ?? (getenv('DB_DRIVER') ?: 'sqlite'),
         'host'      => $dbCustom['host'] ?? (getenv('DB_HOST') ?: '127.0.0.1'),
@@ -20,6 +21,18 @@ return [
         'username'  => $dbCustom['username'] ?? (getenv('DB_USER') ?: 'omnipos_user'),
         'password'  => $dbCustom['password'] ?? (getenv('DB_PASS') ?: 'omnipos_secure_pass'),
         'charset'   => $dbCustom['charset'] ?? 'utf8mb4',
+    ],
+
+    // Secondary / Online Database Configuration (Replication for Online Shop)
+    'online_db' => [
+        'enabled'   => (bool)($onlineDbCustom['enabled'] ?? (getenv('ONLINE_DB_ENABLED') === 'true')),
+        'driver'    => $onlineDbCustom['driver'] ?? (getenv('ONLINE_DB_DRIVER') ?: 'mysql'),
+        'host'      => $onlineDbCustom['host'] ?? (getenv('ONLINE_DB_HOST') ?: '127.0.0.1'),
+        'port'      => (int)($onlineDbCustom['port'] ?? (getenv('ONLINE_DB_PORT') ?: 3306)),
+        'database'  => $onlineDbCustom['database'] ?? (getenv('ONLINE_DB_NAME') ?: 'vendra_online_shop'),
+        'username'  => $onlineDbCustom['username'] ?? (getenv('ONLINE_DB_USER') ?: 'vendra_online_user'),
+        'password'  => $onlineDbCustom['password'] ?? (getenv('ONLINE_DB_PASS') ?: ''),
+        'charset'   => $onlineDbCustom['charset'] ?? 'utf8mb4',
     ],
 
     // Security Salt for System Clock Integrity HMAC and Token Signing

@@ -6,6 +6,7 @@ namespace OmniPOS\Controllers;
 use OmniPOS\Core\Auth;
 use OmniPOS\Core\Database;
 use OmniPOS\Core\Response;
+use PDO;
 
 class ProductsController
 {
@@ -358,6 +359,110 @@ class ProductsController
         } else {
             Response::error($res['message'], 400, $res);
         }
+    }
+
+    public static function getOnlineDbConfig(array $payload): void
+    {
+        Auth::requireRole(['ADMIN', 'MANAGER']);
+        $envFile = __DIR__ . '/../config/env.php';
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate($envFile, true);
+        }
+        $env = file_exists($envFile) ? (include $envFile) : [];
+        $cfg = $env['online_db'] ?? [];
+
+        Response::success([
+            'enabled'      => !empty($cfg['enabled']),
+            'driver'       => $cfg['driver'] ?? 'mysql',
+            'host'         => $cfg['host'] ?? '127.0.0.1',
+            'port'         => (int)($cfg['port'] ?? 3306),
+            'database'     => $cfg['database'] ?? '',
+            'username'     => $cfg['username'] ?? '',
+            'has_password' => !empty($cfg['password']),
+        ]);
+    }
+
+    public static function testOnlineDbConnection(array $payload): void
+    {
+        Auth::requireRole(['ADMIN', 'MANAGER']);
+        $host = trim((string)($payload['host'] ?? '127.0.0.1'));
+        $port = (int)($payload['port'] ?? 3306);
+        $database = trim((string)($payload['database'] ?? ''));
+        $username = trim((string)($payload['username'] ?? ''));
+        $password = (string)($payload['password'] ?? '');
+
+        if ($password === '' || $password === null) {
+            $envFile = __DIR__ . '/../config/env.php';
+            $env = file_exists($envFile) ? (require $envFile) : [];
+            $password = $env['online_db']['password'] ?? '';
+        }
+
+        if (empty($database) || empty($username)) {
+            Response::error('Database name and username are required to test connection.', 400);
+        }
+
+        try {
+            $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $host, $port, $database);
+            $pdo = new PDO($dsn, $username, $password, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_TIMEOUT => 5,
+            ]);
+            $ver = $pdo->query('SELECT VERSION()')->fetchColumn();
+            Response::success([
+                'connected' => true,
+                'version'   => $ver,
+                'message'   => "Successfully connected to MySQL database (Version {$ver}).",
+            ]);
+        } catch (\Throwable $e) {
+            Response::error("Connection failed: " . $e->getMessage(), 400, ['connected' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public static function saveOnlineDbConfig(array $payload): void
+    {
+        Auth::requireRole(['ADMIN', 'MANAGER']);
+        $envFile = __DIR__ . '/../config/env.php';
+        $env = file_exists($envFile) ? (require $envFile) : [];
+
+        $existingPassword = $env['online_db']['password'] ?? '';
+        $newPassword = isset($payload['password']) && $payload['password'] !== ''
+            ? (string)$payload['password']
+            : $existingPassword;
+
+        $env['online_db'] = [
+            'enabled'   => !empty($payload['enabled']),
+            'driver'    => 'mysql',
+            'host'      => trim((string)($payload['host'] ?? '127.0.0.1')),
+            'port'      => (int)($payload['port'] ?? 3306),
+            'database'  => trim((string)($payload['database'] ?? '')),
+            'username'  => trim((string)($payload['username'] ?? '')),
+            'password'  => $newPassword,
+            'charset'   => 'utf8mb4',
+        ];
+
+        $envCopy = $env;
+        if (isset($envCopy['db']['driver']) && $envCopy['db']['driver'] === 'sqlite') {
+            $envCopy['db']['database'] = '__APP_DATABASE_PATH__';
+        }
+
+        $code = "<?php\ndeclare(strict_types=1);\n\nreturn " . var_export($envCopy, true) . ";\n";
+        $code = str_replace("'__APP_DATABASE_PATH__'", "__DIR__ . '/../../database/omnipos.sqlite'", $code);
+        if (file_put_contents($envFile, $code, LOCK_EX) === false) {
+            Response::error('Failed to write configuration file.', 500);
+        }
+
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate($envFile, true);
+            opcache_invalidate(__DIR__ . '/../config.php', true);
+        }
+
+        Database::resetOnlineInstance();
+
+        $savedConfig = $env['online_db'];
+        $savedConfig['has_password'] = !empty($savedConfig['password']);
+        unset($savedConfig['password']);
+
+        Response::success($savedConfig, 200, 'Online database configuration saved successfully.');
     }
 
     public static function units(array $payload): void

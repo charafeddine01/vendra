@@ -3,6 +3,7 @@ node_modules/
 .DS_Store
 *.log
 *.zip
+!public_html/downloads/*.zip
 *.tar.xz
 *.sqlite
 *.sqlite3

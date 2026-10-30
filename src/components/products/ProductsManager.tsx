@@ -3,6 +3,7 @@ import { Product, Category, Unit, TaxRate, CompanySettings } from '../../types';
 import { ApiService } from '../../services/api';
 import { I18nService } from '../../services/i18nService';
 import { CategoryManagerModal } from './CategoryManagerModal';
+import { OnlineDbModal } from './OnlineDbModal';
 import {
   Package,
   Plus,
@@ -48,6 +49,9 @@ export const ProductsManager: React.FC<Props> = ({ settings }) => {
 
   // Category Manager Modal State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+
+  // Online DB Modal State
+  const [isOnlineDbModalOpen, setIsOnlineDbModalOpen] = useState(false);
 
   // Barcode Label Print Modal State
   const [labelProduct, setLabelProduct] = useState<Product | null>(null);
@@ -237,6 +241,16 @@ export const ProductsManager: React.FC<Props> = ({ settings }) => {
           >
             <Tag className="w-4 h-4 text-amber-400" />
             <span>Categories</span>
+          </button>
+
+          {/* Configure Online DB Button */}
+          <button
+            onClick={() => setIsOnlineDbModalOpen(true)}
+            className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold px-3 py-2 rounded-xl text-xs transition border border-slate-700 flex items-center gap-1.5 shadow-sm"
+            title="Configure Online Shop MySQL Database Replication"
+          >
+            <Cloud className="w-4 h-4 text-blue-400" />
+            <span>Online DB Config</span>
           </button>
 
           {/* Sync to Online DB Button */}
@@ -885,6 +899,14 @@ export const ProductsManager: React.FC<Props> = ({ settings }) => {
           categories={categories}
           onClose={() => setIsCategoryModalOpen(false)}
           onRefresh={fetchCatalog}
+        />
+      )}
+
+      {/* Online DB Configuration Modal */}
+      {isOnlineDbModalOpen && (
+        <OnlineDbModal
+          onClose={() => setIsOnlineDbModalOpen(false)}
+          onSyncComplete={fetchCatalog}
         />
       )}
 

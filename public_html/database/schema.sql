@@ -132,8 +132,16 @@ CREATE TABLE IF NOT EXISTS `products` (
     `cost_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
     `selling_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
     `secondary_selling_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+    `pack_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+    `pack_barcode` VARCHAR(64) NULL,
+    `pack_quantity` INT NOT NULL DEFAULT 1,
+    `min_order_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+    `min_order_qty` INT NOT NULL DEFAULT 1,
     `track_inventory` TINYINT(1) NOT NULL DEFAULT 1,
     `alert_quantity` DECIMAL(15,4) NOT NULL DEFAULT 5.0000,
+    `is_online` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Flag to show in Online Shop app',
+    `low_stock_local` INT NOT NULL DEFAULT 5 COMMENT 'Low stock threshold for physical local POS',
+    `low_stock_online` INT NOT NULL DEFAULT 5 COMMENT 'Low stock threshold for online shop app',
     `scale_plu` VARCHAR(16) NULL COMMENT '5-digit PLU for supermarket scales',
     `image_url` MEDIUMTEXT NULL,
     `modifiers_schema` JSON NULL COMMENT 'Restaurant modifier options (Extra cheese, etc.)',
@@ -180,6 +188,18 @@ CREATE TABLE IF NOT EXISTS `product_units` (
     FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE,
     FOREIGN KEY (`unit_id`) REFERENCES `units`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 10b. Product Extra Barcodes (alias barcodes)
+CREATE TABLE IF NOT EXISTS `product_barcodes` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `product_id` INT UNSIGNED NOT NULL,
+    `barcode` VARCHAR(64) NOT NULL,
+    `label` VARCHAR(64) NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uk_extra_barcode` (`barcode`),
+    INDEX `idx_extra_barcode_product` (`product_id`),
+    FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 11. Bill of Materials (BOM) / Restaurant Recipes
 CREATE TABLE IF NOT EXISTS `product_recipes` (

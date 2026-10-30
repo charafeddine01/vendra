@@ -67,6 +67,8 @@ class Router
         'pos.order.deleteHeld'    => [PosController::class, 'deleteHeld'],
         'pos.order.syncBatch'     => [PosController::class, 'syncBatch'],
         'pos.invoice.lookup'      => [PosController::class, 'lookupInvoice'],
+        'pos.orders.list'         => [PosController::class, 'listOrders'],
+        'pos.order.list'          => [PosController::class, 'listOrders'],
 
         // Shifts & Cash Drawer
         'shifts.getCurrent'       => [ShiftsController::class, 'getCurrent'],
@@ -85,8 +87,17 @@ class Router
         'products.save'           => [ProductsController::class, 'save'],
         'products.delete'         => [ProductsController::class, 'delete'],
         'products.categories'     => [ProductsController::class, 'categories'],
+        'products.categories.save'=> [ProductsController::class, 'saveCategory'],
+        'products.categories.delete' => [ProductsController::class, 'deleteCategory'],
+        'categories.list'         => [ProductsController::class, 'categories'],
+        'categories.save'         => [ProductsController::class, 'saveCategory'],
+        'categories.delete'       => [ProductsController::class, 'deleteCategory'],
         'products.units'          => [ProductsController::class, 'units'],
         'products.taxRates'       => [ProductsController::class, 'taxRates'],
+        'sync.onlineDb.pushAll'          => [ProductsController::class, 'syncAllToOnline'],
+        'sync.onlineDb.getConfig'        => [ProductsController::class, 'getOnlineDbConfig'],
+        'sync.onlineDb.saveConfig'       => [ProductsController::class, 'saveOnlineDbConfig'],
+        'sync.onlineDb.testConnection'   => [ProductsController::class, 'testOnlineDbConnection'],
 
         // Inventory Management
         'inventory.warehouses'    => [InventoryController::class, 'warehouses'],

@@ -271,6 +271,16 @@ class Database
     private static ?PDO $onlineInstance = null;
     private static bool $onlineAttempted = false;
 
+    public static function resetOnlineInstance(): void
+    {
+        self::$onlineInstance = null;
+        self::$onlineAttempted = false;
+        if (file_exists(__DIR__ . '/../config.php')) {
+            $fresh = require __DIR__ . '/../config.php';
+            self::$config['online_db'] = $fresh['online_db'] ?? [];
+        }
+    }
+
     public static function getOnlineInstance(): ?PDO
     {
         if (self::$onlineInstance !== null) {
@@ -282,6 +292,14 @@ class Database
         }
 
         self::$onlineAttempted = true;
+
+        if (file_exists(__DIR__ . '/../config.php')) {
+            $freshConfig = require __DIR__ . '/../config.php';
+            if (isset($freshConfig['online_db'])) {
+                self::$config['online_db'] = $freshConfig['online_db'];
+            }
+        }
+
         $onlineConfig = self::$config['online_db'] ?? [];
         if (empty($onlineConfig['enabled'])) {
             return null;
@@ -303,11 +321,72 @@ class Database
                 PDO::ATTR_TIMEOUT => 4,
             ]);
 
+            self::ensureOnlineTablesExist($pdo);
+
             self::$onlineInstance = $pdo;
             return self::$onlineInstance;
         } catch (\Throwable $e) {
             error_log('[DualDB] Online database connection failed: ' . $e->getMessage());
             return null;
+        }
+    }
+
+    private static function ensureOnlineTablesExist(PDO $online): void
+    {
+        try {
+            // 1. Ensure categories table exists
+            $online->exec("CREATE TABLE IF NOT EXISTS `categories` (
+                `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                `name` VARCHAR(128) NOT NULL UNIQUE,
+                `name_ar` VARCHAR(128) NULL,
+                `color` VARCHAR(32) NULL DEFAULT '#3b82f6',
+                `icon` VARCHAR(64) NULL DEFAULT 'Package',
+                `sort_order` INT NOT NULL DEFAULT 0,
+                `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+            // 2. Ensure products table exists
+            $online->exec("CREATE TABLE IF NOT EXISTS `products` (
+                `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                `sku` VARCHAR(64) NOT NULL UNIQUE,
+                `barcode` VARCHAR(64) NULL,
+                `name` VARCHAR(255) NOT NULL,
+                `name_ar` VARCHAR(255) NULL,
+                `category_id` INT UNSIGNED NULL,
+                `unit_id` INT UNSIGNED NOT NULL DEFAULT 1,
+                `type` VARCHAR(32) NOT NULL DEFAULT 'STANDARD',
+                `cost_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+                `selling_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+                `secondary_selling_price` DECIMAL(15,4) NULL,
+                `pack_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+                `pack_barcode` VARCHAR(64) NULL,
+                `pack_quantity` INT NOT NULL DEFAULT 1,
+                `min_order_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+                `min_order_qty` INT NOT NULL DEFAULT 1,
+                `track_inventory` TINYINT(1) NOT NULL DEFAULT 1,
+                `alert_quantity` DECIMAL(15,4) NOT NULL DEFAULT 5.0000,
+                `is_online` TINYINT(1) NOT NULL DEFAULT 1,
+                `low_stock_local` INT NOT NULL DEFAULT 5,
+                `low_stock_online` INT NOT NULL DEFAULT 5,
+                `scale_plu` VARCHAR(16) NULL,
+                `image_url` MEDIUMTEXT NULL,
+                `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+            // 3. Ensure columns exist if table was previously created without them
+            $colCheck = $online->query("SHOW COLUMNS FROM `products` LIKE 'is_online'")->fetch();
+            if (!$colCheck) {
+                $online->exec("ALTER TABLE `products` 
+                    ADD COLUMN `is_online` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Flag to show in Online Shop app',
+                    ADD COLUMN `low_stock_local` INT NOT NULL DEFAULT 5 COMMENT 'Low stock threshold for physical local POS',
+                    ADD COLUMN `low_stock_online` INT NOT NULL DEFAULT 5 COMMENT 'Low stock threshold for online shop app'");
+            }
+        } catch (\Throwable $t) {
+            error_log('[DualDB] ensureOnlineTablesExist notice: ' . $t->getMessage());
         }
     }
 

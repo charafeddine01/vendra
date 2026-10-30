@@ -33,6 +33,11 @@ fi
 # 3. Create zip distribution
 echo "-> Creating zip archive..."
 cd "$DIST_WIN"
+rm -f VendraPOS-SolarShowroom-Windows.zip
 zip -r -9 -q VendraPOS-SolarShowroom-Windows.zip VendraPOS -x "*/logs/*"
+
+# Copy to public_html/downloads for direct browser download
+mkdir -p "$ROOT_DIR/public_html/downloads"
+cp -f VendraPOS-SolarShowroom-Windows.zip "$ROOT_DIR/public_html/downloads/"
 
 echo "=== Done! Package created at $DIST_WIN/VendraPOS-SolarShowroom-Windows.zip ($(du -h VendraPOS-SolarShowroom-Windows.zip | cut -f1)) ==="

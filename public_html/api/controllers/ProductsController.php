@@ -6,6 +6,7 @@ namespace OmniPOS\Controllers;
 use OmniPOS\Core\Auth;
 use OmniPOS\Core\Database;
 use OmniPOS\Core\Response;
+use PDO;
 
 class ProductsController
 {
@@ -46,7 +47,8 @@ class ProductsController
             $params[':type'] = $type;
         }
 
-        $sql .= ' ORDER BY p.id DESC';
+        // Keep zero stock at the end of the list
+        $sql .= ' ORDER BY (CASE WHEN COALESCE(si.quantity, 0) > 0 THEN 0 ELSE 1 END) ASC, p.id DESC';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
@@ -117,6 +119,16 @@ class ProductsController
         $isKitchen = !empty($payload['is_kitchen_item']) ? 1 : 0;
         $kitchenStation = $payload['kitchen_station'] ?? 'Kitchen';
         $warrantyMonths = (int)($payload['warranty_months'] ?? 0);
+        $packPrice = (float)($payload['pack_price'] ?? 0);
+        $packBarcode = trim((string)($payload['pack_barcode'] ?? '')) ?: null;
+        $packQuantity = (int)($payload['pack_quantity'] ?? 1);
+        $minOrderPrice = (float)($payload['min_order_price'] ?? 0);
+        $minOrderQty = (int)($payload['min_order_qty'] ?? 1);
+        $isOnline = isset($payload['is_online']) ? ((int)$payload['is_online'] ? 1 : 0) : 1;
+        $lowStockLocal = (int)($payload['low_stock_local'] ?? 5);
+        $lowStockOnline = (int)($payload['low_stock_online'] ?? 5);
+        $stockInputMode = $payload['stock_input_mode'] ?? 'UNITS'; // 'UNITS' or 'PACKS'
+        $extraBarcodes = !empty($payload['extra_barcodes']) && is_array($payload['extra_barcodes']) ? $payload['extra_barcodes'] : [];
 
         if (empty($name)) {
             Response::error('Product name is required.', 400);
@@ -134,17 +146,24 @@ class ProductsController
                     `sku` = :sku, `barcode` = :bc, `name` = :name, `name_ar` = :name_ar,
                     `category_id` = :cid, `unit_id` = :uid, `tax_rate_id` = :trid, `type` = :type,
                     `cost_price` = :cost, `selling_price` = :price, `secondary_selling_price` = :sec_price,
+                    `pack_price` = :pack_price, `pack_barcode` = :pack_bc, `pack_quantity` = :pack_qty,
+                    `min_order_price` = :min_price, `min_order_qty` = :min_qty,
                     `track_inventory` = :track, `alert_quantity` = :alert, `scale_plu` = :plu,
                     `image_url` = :img, `modifiers_schema` = :modifiers, `is_kitchen_item` = :kitch,
-                    `kitchen_station` = :station, `warranty_months` = :warr
+                    `kitchen_station` = :station, `warranty_months` = :warr,
+                    `is_online` = :is_online, `low_stock_local` = :low_local, `low_stock_online` = :low_online
                     WHERE `id` = :id';
                 $params = [
                     ':sku' => $sku, ':bc' => $barcode, ':name' => $name, ':name_ar' => $nameAr,
                     ':cid' => $categoryId, ':uid' => $unitId, ':trid' => $taxRateId, ':type' => $type,
                     ':cost' => $costPrice, ':price' => $sellingPrice, ':sec_price' => $secPrice,
+                    ':pack_price' => $packPrice, ':pack_bc' => $packBarcode, ':pack_qty' => $packQuantity,
+                    ':min_price' => $minOrderPrice, ':min_qty' => $minOrderQty,
                     ':track' => $trackInventory, ':alert' => $alertQty, ':plu' => $scalePlu,
                     ':img' => $imageUrl, ':modifiers' => $modifiers, ':kitch' => $isKitchen,
-                    ':station' => $kitchenStation, ':warr' => $warrantyMonths, ':id' => $id,
+                    ':station' => $kitchenStation, ':warr' => $warrantyMonths,
+                    ':is_online' => $isOnline, ':low_local' => $lowStockLocal, ':low_online' => $lowStockOnline,
+                    ':id' => $id,
                 ];
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
@@ -153,27 +172,36 @@ class ProductsController
                 $sql = 'INSERT INTO `products` (
                     `sku`, `barcode`, `name`, `name_ar`, `category_id`, `unit_id`, `tax_rate_id`,
                     `type`, `cost_price`, `selling_price`, `secondary_selling_price`,
+                    `pack_price`, `pack_barcode`, `pack_quantity`, `min_order_price`, `min_order_qty`,
                     `track_inventory`, `alert_quantity`, `scale_plu`, `image_url`,
-                    `modifiers_schema`, `is_kitchen_item`, `kitchen_station`, `warranty_months`
+                    `modifiers_schema`, `is_kitchen_item`, `kitchen_station`, `warranty_months`,
+                    `is_online`, `low_stock_local`, `low_stock_online`
                 ) VALUES (
                     :sku, :bc, :name, :name_ar, :cid, :uid, :trid,
                     :type, :cost, :price, :sec_price,
+                    :pack_price, :pack_bc, :pack_qty, :min_price, :min_qty,
                     :track, :alert, :plu, :img,
-                    :modifiers, :kitch, :station, :warr
+                    :modifiers, :kitch, :station, :warr,
+                    :is_online, :low_local, :low_online
                 )';
                 $params = [
                     ':sku' => $sku, ':bc' => $barcode, ':name' => $name, ':name_ar' => $nameAr,
                     ':cid' => $categoryId, ':uid' => $unitId, ':trid' => $taxRateId,
                     ':type' => $type, ':cost' => $costPrice, ':price' => $sellingPrice, ':sec_price' => $secPrice,
+                    ':pack_price' => $packPrice, ':pack_bc' => $packBarcode, ':pack_qty' => $packQuantity,
+                    ':min_price' => $minOrderPrice, ':min_qty' => $minOrderQty,
                     ':track' => $trackInventory, ':alert' => $alertQty, ':plu' => $scalePlu, ':img' => $imageUrl,
                     ':modifiers' => $modifiers, ':kitch' => $isKitchen, ':station' => $kitchenStation, ':warr' => $warrantyMonths,
+                    ':is_online' => $isOnline, ':low_local' => $lowStockLocal, ':low_online' => $lowStockOnline,
                 ];
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 $productId = (int)$pdo->lastInsertId();
 
-                // Initialize stock record
-                $initialStock = (float)($payload['initial_stock'] ?? 10);
+                // Initialize stock record (If entered as packs, convert to total individual units)
+                $rawStock = (float)($payload['initial_stock'] ?? 10);
+                $initialStock = ($stockInputMode === 'PACKS' && $packQuantity > 1) ? ($rawStock * $packQuantity) : $rawStock;
+
                 $stmtStock = $pdo->prepare('INSERT INTO `stock_inventory` (`product_id`, `warehouse_id`, `quantity`) VALUES (:pid, 1, :qty)');
                 $stmtStock->execute([':pid' => $productId, ':qty' => $initialStock]);
             }
@@ -212,7 +240,29 @@ class ProductsController
                 }
             }
 
+            // Save extra barcodes
+            $pdo->prepare('DELETE FROM `product_barcodes` WHERE `product_id` = :pid')->execute([':pid' => $productId]);
+            if (!empty($extraBarcodes)) {
+                $stmtInsBarcode = $pdo->prepare('INSERT INTO `product_barcodes` (`product_id`, `barcode`, `label`) VALUES (:pid, :bc, :label)');
+                foreach ($extraBarcodes as $eb) {
+                    $ebBarcode = trim((string)($eb['barcode'] ?? ''));
+                    if (empty($ebBarcode)) continue;
+                    $stmtInsBarcode->execute([
+                        ':pid'   => $productId,
+                        ':bc'    => $ebBarcode,
+                        ':label' => $eb['label'] ?? null,
+                    ]);
+                }
+            }
+
             Database::commit();
+
+            // Replicate to online database if configured
+            try {
+                Database::syncProductToOnline($productId);
+            } catch (\Throwable $t) {
+                error_log('[DualDB] Replicate product failed: ' . $t->getMessage());
+            }
 
             Response::success(['product_id' => $productId], 200, 'Product saved successfully.');
         } catch (\Throwable $e) {
@@ -229,6 +279,13 @@ class ProductsController
         $stmt = $pdo->prepare('UPDATE `products` SET `is_active` = 0 WHERE `id` = :id');
         $stmt->execute([':id' => $id]);
 
+        try {
+            $online = Database::getOnlineInstance();
+            if ($online) {
+                $online->prepare('UPDATE `products` SET `is_active` = 0 WHERE `id` = :id')->execute([':id' => $id]);
+            }
+        } catch (\Throwable $t) {}
+
         Response::success(null, 200, 'Product deactivated.');
     }
 
@@ -237,6 +294,175 @@ class ProductsController
         $pdo = Database::getInstance();
         $stmt = $pdo->query('SELECT * FROM `categories` WHERE `is_active` = 1 ORDER BY `sort_order` ASC');
         Response::success(['categories' => $stmt->fetchAll()]);
+    }
+
+    public static function saveCategory(array $payload): void
+    {
+        Auth::requireRole(['ADMIN', 'MANAGER']);
+        $pdo = Database::getInstance();
+        $id = !empty($payload['id']) ? (int)$payload['id'] : null;
+        $name = trim((string)($payload['name'] ?? ''));
+        $nameAr = !empty($payload['name_ar']) ? trim((string)$payload['name_ar']) : null;
+        $color = !empty($payload['color']) ? trim((string)$payload['color']) : '#3b82f6';
+        $icon = !empty($payload['icon']) ? trim((string)$payload['icon']) : 'Package';
+        $sortOrder = (int)($payload['sort_order'] ?? 0);
+
+        if (empty($name)) {
+            Response::error('Category name is required.', 400);
+        }
+
+        if ($id) {
+            $stmt = $pdo->prepare('UPDATE `categories` SET `name` = :name, `name_ar` = :name_ar, `color` = :color, `icon` = :icon, `sort_order` = :sort WHERE `id` = :id');
+            $stmt->execute([':name' => $name, ':name_ar' => $nameAr, ':color' => $color, ':icon' => $icon, ':sort' => $sortOrder, ':id' => $id]);
+            $catId = $id;
+        } else {
+            $stmt = $pdo->prepare('INSERT INTO `categories` (`name`, `name_ar`, `color`, `icon`, `sort_order`, `is_active`) VALUES (:name, :name_ar, :color, :icon, :sort, 1)');
+            $stmt->execute([':name' => $name, ':name_ar' => $nameAr, ':color' => $color, ':icon' => $icon, ':sort' => $sortOrder]);
+            $catId = (int)$pdo->lastInsertId();
+        }
+
+        // Replicate to online database
+        try {
+            Database::syncCategoryToOnline($catId);
+        } catch (\Throwable $t) {}
+
+        Response::success(['id' => $catId], 200, 'Category saved successfully.');
+    }
+
+    public static function deleteCategory(array $payload): void
+    {
+        Auth::requireRole(['ADMIN', 'MANAGER']);
+        $id = (int)($payload['id'] ?? 0);
+        if ($id <= 0) {
+            Response::error('Invalid category ID.', 400);
+        }
+        $pdo = Database::getInstance();
+        $stmt = $pdo->prepare('UPDATE `categories` SET `is_active` = 0 WHERE `id` = :id');
+        $stmt->execute([':id' => $id]);
+
+        try {
+            $online = Database::getOnlineInstance();
+            if ($online) {
+                $online->prepare('UPDATE `categories` SET `is_active` = 0 WHERE `id` = :id')->execute([':id' => $id]);
+            }
+        } catch (\Throwable $t) {}
+
+        Response::success(null, 200, 'Category deleted successfully.');
+    }
+
+    public static function syncAllToOnline(array $payload): void
+    {
+        Auth::requireRole(['ADMIN', 'MANAGER']);
+        $res = Database::syncAllToOnline();
+        if ($res['success']) {
+            Response::success($res, 200, $res['message']);
+        } else {
+            Response::error($res['message'], 400, $res);
+        }
+    }
+
+    public static function getOnlineDbConfig(array $payload): void
+    {
+        Auth::requireRole(['ADMIN', 'MANAGER']);
+        $envFile = __DIR__ . '/../config/env.php';
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate($envFile, true);
+        }
+        $env = file_exists($envFile) ? (include $envFile) : [];
+        $cfg = $env['online_db'] ?? [];
+
+        Response::success([
+            'enabled'      => !empty($cfg['enabled']),
+            'driver'       => $cfg['driver'] ?? 'mysql',
+            'host'         => $cfg['host'] ?? '127.0.0.1',
+            'port'         => (int)($cfg['port'] ?? 3306),
+            'database'     => $cfg['database'] ?? '',
+            'username'     => $cfg['username'] ?? '',
+            'has_password' => !empty($cfg['password']),
+        ]);
+    }
+
+    public static function testOnlineDbConnection(array $payload): void
+    {
+        Auth::requireRole(['ADMIN', 'MANAGER']);
+        $host = trim((string)($payload['host'] ?? '127.0.0.1'));
+        $port = (int)($payload['port'] ?? 3306);
+        $database = trim((string)($payload['database'] ?? ''));
+        $username = trim((string)($payload['username'] ?? ''));
+        $password = (string)($payload['password'] ?? '');
+
+        if ($password === '' || $password === null) {
+            $envFile = __DIR__ . '/../config/env.php';
+            $env = file_exists($envFile) ? (require $envFile) : [];
+            $password = $env['online_db']['password'] ?? '';
+        }
+
+        if (empty($database) || empty($username)) {
+            Response::error('Database name and username are required to test connection.', 400);
+        }
+
+        try {
+            $dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $host, $port, $database);
+            $pdo = new PDO($dsn, $username, $password, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_TIMEOUT => 5,
+            ]);
+            $ver = $pdo->query('SELECT VERSION()')->fetchColumn();
+            Response::success([
+                'connected' => true,
+                'version'   => $ver,
+                'message'   => "Successfully connected to MySQL database (Version {$ver}).",
+            ]);
+        } catch (\Throwable $e) {
+            Response::error("Connection failed: " . $e->getMessage(), 400, ['connected' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public static function saveOnlineDbConfig(array $payload): void
+    {
+        Auth::requireRole(['ADMIN', 'MANAGER']);
+        $envFile = __DIR__ . '/../config/env.php';
+        $env = file_exists($envFile) ? (require $envFile) : [];
+
+        $existingPassword = $env['online_db']['password'] ?? '';
+        $newPassword = isset($payload['password']) && $payload['password'] !== ''
+            ? (string)$payload['password']
+            : $existingPassword;
+
+        $env['online_db'] = [
+            'enabled'   => !empty($payload['enabled']),
+            'driver'    => 'mysql',
+            'host'      => trim((string)($payload['host'] ?? '127.0.0.1')),
+            'port'      => (int)($payload['port'] ?? 3306),
+            'database'  => trim((string)($payload['database'] ?? '')),
+            'username'  => trim((string)($payload['username'] ?? '')),
+            'password'  => $newPassword,
+            'charset'   => 'utf8mb4',
+        ];
+
+        $envCopy = $env;
+        if (isset($envCopy['db']['driver']) && $envCopy['db']['driver'] === 'sqlite') {
+            $envCopy['db']['database'] = '__APP_DATABASE_PATH__';
+        }
+
+        $code = "<?php\ndeclare(strict_types=1);\n\nreturn " . var_export($envCopy, true) . ";\n";
+        $code = str_replace("'__APP_DATABASE_PATH__'", "__DIR__ . '/../../database/omnipos.sqlite'", $code);
+        if (file_put_contents($envFile, $code, LOCK_EX) === false) {
+            Response::error('Failed to write configuration file.', 500);
+        }
+
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate($envFile, true);
+            opcache_invalidate(__DIR__ . '/../config.php', true);
+        }
+
+        Database::resetOnlineInstance();
+
+        $savedConfig = $env['online_db'];
+        $savedConfig['has_password'] = !empty($savedConfig['password']);
+        unset($savedConfig['password']);
+
+        Response::success($savedConfig, 200, 'Online database configuration saved successfully.');
     }
 
     public static function units(array $payload): void

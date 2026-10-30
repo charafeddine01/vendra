@@ -94,7 +94,10 @@ class Router
         'categories.delete'       => [ProductsController::class, 'deleteCategory'],
         'products.units'          => [ProductsController::class, 'units'],
         'products.taxRates'       => [ProductsController::class, 'taxRates'],
-        'sync.onlineDb.pushAll'   => [ProductsController::class, 'syncAllToOnline'],
+        'sync.onlineDb.pushAll'          => [ProductsController::class, 'syncAllToOnline'],
+        'sync.onlineDb.getConfig'        => [ProductsController::class, 'getOnlineDbConfig'],
+        'sync.onlineDb.saveConfig'       => [ProductsController::class, 'saveOnlineDbConfig'],
+        'sync.onlineDb.testConnection'   => [ProductsController::class, 'testOnlineDbConnection'],
 
         // Inventory Management
         'inventory.warehouses'    => [InventoryController::class, 'warehouses'],

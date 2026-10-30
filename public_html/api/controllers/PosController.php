@@ -26,6 +26,8 @@ class PosController
         // 4. Products with Stock Levels (Main Warehouse 1)
         $warehouseId = (int)($payload['warehouse_id'] ?? 1);
         $sql = 'SELECT p.*,
+                       p.pack_price, p.pack_barcode, p.pack_quantity,
+                       p.min_order_price, p.min_order_qty,
                        COALESCE(si.quantity, 0) as stock_quantity,
                        u.code as unit_code, u.is_fractional,
                        tr.rate_percent as tax_rate_percent
@@ -34,10 +36,21 @@ class PosController
                 LEFT JOIN `units` u ON p.unit_id = u.id
                 LEFT JOIN `tax_rates` tr ON p.tax_rate_id = tr.id
                 WHERE p.is_active = 1
-                ORDER BY p.name ASC';
+                ORDER BY (CASE WHEN COALESCE(si.quantity, 0) > 0 THEN 0 ELSE 1 END) ASC, p.name ASC';
         $stmt = $pdo->prepare($sql);
         $stmt->execute([':wh' => $warehouseId]);
         $products = $stmt->fetchAll();
+
+        // Attach extra barcodes to each product
+        $extraBarcodesAll = $pdo->query('SELECT * FROM `product_barcodes` ORDER BY `product_id` ASC')->fetchAll();
+        $extraByProduct = [];
+        foreach ($extraBarcodesAll as $eb) {
+            $extraByProduct[(int)$eb['product_id']][] = $eb;
+        }
+        foreach ($products as &$prod) {
+            $prod['extra_barcodes'] = $extraByProduct[(int)$prod['id']] ?? [];
+        }
+        unset($prod);
 
         // 5. Variants
         $variants = $pdo->query('SELECT * FROM `product_variants` ORDER BY `id` ASC')->fetchAll();
@@ -219,8 +232,9 @@ class PosController
                     ':kstatus' => $kitchenStatus,
                 ]);
 
-                // Stock deduction
-                self::deductStock($pdo, $productId, $variantId, $batchId, $warehouseId, $qty, $orderId, $cashierId);
+                // Stock deduction (supporting single unit or pack sales)
+                $isPack = (($item['notes'] ?? '') === 'PACK' || !empty($item['is_pack']));
+                self::deductStock($pdo, $productId, $variantId, $batchId, $warehouseId, $qty, $orderId, $cashierId, $isPack);
             }
 
             // 3. Customer Ledger for On-Account (Debt) Payment
@@ -304,16 +318,21 @@ class PosController
         }
     }
 
-    private static function deductStock(PDO $pdo, int $productId, ?int $variantId, ?int $batchId, int $warehouseId, float $qty, int $orderId, int $cashierId): void
+    private static function deductStock(PDO $pdo, int $productId, ?int $variantId, ?int $batchId, int $warehouseId, float $qty, int $orderId, int $cashierId, bool $isPack = false): void
     {
-        // Check product type
-        $stmtP = $pdo->prepare('SELECT `type`, `track_inventory`, `cost_price` FROM `products` WHERE `id` = :id');
+        // Check product type and pack multiplier
+        $stmtP = $pdo->prepare('SELECT `type`, `track_inventory`, `cost_price`, `pack_quantity` FROM `products` WHERE `id` = :id');
         $stmtP->execute([':id' => $productId]);
         $prod = $stmtP->fetch();
 
         if (!$prod || empty($prod['track_inventory'])) {
             return;
         }
+
+        $packMultiplier = ($isPack && !empty($prod['pack_quantity']) && (int)$prod['pack_quantity'] > 1)
+            ? (int)$prod['pack_quantity']
+            : 1;
+        $effectiveQty = $qty * $packMultiplier;
 
         $cost = (float)($prod['cost_price'] ?? 0);
 
@@ -324,8 +343,8 @@ class PosController
             $ingredients = $stmtRec->fetchAll();
 
             foreach ($ingredients as $ing) {
-                $ingQty = (float)$ing['quantity'] * $qty;
-                self::deductStock($pdo, (int)$ing['ingredient_product_id'], null, null, $warehouseId, $ingQty, $orderId, $cashierId);
+                $ingQty = (float)$ing['quantity'] * $effectiveQty;
+                self::deductStock($pdo, (int)$ing['ingredient_product_id'], null, null, $warehouseId, $ingQty, $orderId, $cashierId, false);
             }
             return;
         }
@@ -333,13 +352,17 @@ class PosController
         // Deduct from stock_inventory
         if ($variantId) {
             $stmtUpd = $pdo->prepare('UPDATE `stock_inventory` SET `quantity` = `quantity` - :qty WHERE `product_id` = :pid AND `variant_id` = :vid AND `warehouse_id` = :wh');
-            $stmtUpd->execute([':qty' => $qty, ':pid' => $productId, ':vid' => $variantId, ':wh' => $warehouseId]);
+            $stmtUpd->execute([':qty' => $effectiveQty, ':pid' => $productId, ':vid' => $variantId, ':wh' => $warehouseId]);
         } else {
             $stmtUpd = $pdo->prepare('UPDATE `stock_inventory` SET `quantity` = `quantity` - :qty WHERE `product_id` = :pid AND `variant_id` IS NULL AND `warehouse_id` = :wh');
-            $stmtUpd->execute([':qty' => $qty, ':pid' => $productId, ':wh' => $warehouseId]);
+            $stmtUpd->execute([':qty' => $effectiveQty, ':pid' => $productId, ':wh' => $warehouseId]);
         }
 
         // Record stock movement
+        $notes = $isPack && $packMultiplier > 1
+            ? "POS Order Line Deduction (Pack x{$packMultiplier}: {$qty} pack(s) = {$effectiveQty} units)"
+            : "POS Order Line Deduction";
+
         $stmtMov = $pdo->prepare('INSERT INTO `stock_movements` (
             `product_id`, `variant_id`, `warehouse_id`, `movement_type`, `quantity`,
             `cost_price`, `reference_type`, `reference_id`, `notes`, `created_by`
@@ -351,17 +374,17 @@ class PosController
             ':pid' => $productId,
             ':vid' => $variantId,
             ':wh' => $warehouseId,
-            ':qty' => -$qty,
+            ':qty' => -$effectiveQty,
             ':cost' => $cost,
             ':oid' => $orderId,
-            ':notes' => "POS Order Line Deduction",
+            ':notes' => $notes,
             ':by' => $cashierId,
         ]);
 
         // Pharmacy FEFO deduction if batch tracked
         if ($batchId) {
             $stmtBatch = $pdo->prepare('UPDATE `product_batches` SET `quantity_remaining` = `quantity_remaining` - :qty WHERE `id` = :bid');
-            $stmtBatch->execute([':qty' => $qty, ':bid' => $batchId]);
+            $stmtBatch->execute([':qty' => $effectiveQty, ':bid' => $batchId]);
         }
     }
 
@@ -580,6 +603,75 @@ class PosController
         Response::success([
             'order' => $order,
             'items' => $items,
+        ]);
+    }
+
+    public static function listOrders(array $payload): void
+    {
+        $pdo = Database::getInstance();
+        $search = trim((string)($payload['search'] ?? ''));
+        $limit = max(1, min(100, (int)($payload['limit'] ?? 50)));
+        $page = max(1, (int)($payload['page'] ?? 1));
+        $offset = ($page - 1) * $limit;
+        $orderDir = strtoupper((string)($payload['order'] ?? 'DESC')) === 'ASC' ? 'ASC' : 'DESC';
+
+        $where = ["o.`status` != 'HELD'"];
+        $params = [];
+
+        if (!empty($search)) {
+            $where[] = '(o.`invoice_number` LIKE :q1 OR c.`name` LIKE :q2 OR c.`phone` LIKE :q3 OR EXISTS (
+                SELECT 1 FROM `order_items` oi 
+                WHERE oi.`order_id` = o.`id` 
+                AND (oi.`product_name` LIKE :q4 OR oi.`sku` LIKE :q5 OR oi.`barcode` LIKE :q6)
+            ))';
+            $q = "%{$search}%";
+            $params[':q1'] = $q;
+            $params[':q2'] = $q;
+            $params[':q3'] = $q;
+            $params[':q4'] = $q;
+            $params[':q5'] = $q;
+            $params[':q6'] = $q;
+        }
+
+        $whereSql = implode(' AND ', $where);
+
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM `orders` o LEFT JOIN `customers` c ON o.`customer_id` = c.`id` WHERE {$whereSql}");
+        $countStmt->execute($params);
+        $total = (int)$countStmt->fetchColumn();
+
+        $stmt = $pdo->prepare("SELECT o.*, u.`full_name` as `cashier_name`, c.`name` as `customer_name`, c.`phone` as `customer_phone`
+                               FROM `orders` o
+                               LEFT JOIN `users` u ON o.`cashier_id` = u.`id`
+                               LEFT JOIN `customers` c ON o.`customer_id` = c.`id`
+                               WHERE {$whereSql}
+                               ORDER BY o.`id` {$orderDir}
+                               LIMIT {$limit} OFFSET {$offset}");
+        $stmt->execute($params);
+        $orders = $stmt->fetchAll();
+
+        if (!empty($orders)) {
+            $orderIds = array_column($orders, 'id');
+            $inPlaceholders = implode(',', array_fill(0, count($orderIds), '?'));
+            $itemsStmt = $pdo->prepare("SELECT oi.*, p.`image_url` FROM `order_items` oi LEFT JOIN `products` p ON oi.`product_id` = p.`id` WHERE oi.`order_id` IN ({$inPlaceholders})");
+            $itemsStmt->execute($orderIds);
+            $allItems = $itemsStmt->fetchAll();
+
+            $groupedItems = [];
+            foreach ($allItems as $item) {
+                $groupedItems[$item['order_id']][] = $item;
+            }
+
+            foreach ($orders as &$ord) {
+                $ord['items'] = $groupedItems[$ord['id']] ?? [];
+            }
+            unset($ord);
+        }
+
+        Response::success([
+            'orders' => $orders,
+            'total'  => $total,
+            'page'   => $page,
+            'limit'  => $limit,
         ]);
     }
 }
