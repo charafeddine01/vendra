@@ -8,6 +8,7 @@ node_modules/
 *.tar.xz
 .cache/
 dist-windows/*.exe
+dist-windows/VendraPOS/vc_redist.x64.exe
 *.sqlite
 *.sqlite3
 *.db

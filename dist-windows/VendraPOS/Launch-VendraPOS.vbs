@@ -2,8 +2,8 @@
 Option Explicit
 
 Dim WshShell, fso, scriptDir
-Dim edgePath, chromePath, bravePath, phpExe, cmd
-Dim http, isRunning, attempts
+Dim edgePath, chromePath, bravePath, phpExe, cmd, logFile
+Dim http, isRunning, attempts, logContent, ts
 
 Set WshShell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
@@ -15,14 +15,22 @@ WshShell.CurrentDirectory = scriptDir
 If Not fso.FolderExists(scriptDir & "\logs") Then
     fso.CreateFolder(scriptDir & "\logs")
 End If
+If Not fso.FolderExists(scriptDir & "\php\logs") Then
+    On Error Resume Next
+    fso.CreateFolder(scriptDir & "\php\logs")
+    On Error GoTo 0
+End If
 
-' Select PHP executable (prefer php-win.exe, fallback to php.exe)
-If fso.FileExists(scriptDir & "\php\php-win.exe") Then
-    phpExe = scriptDir & "\php\php-win.exe"
-ElseIf fso.FileExists(scriptDir & "\php\php.exe") Then
+logFile = scriptDir & "\logs\server.log"
+
+' Select PHP executable (prefer php.exe for reliable CLI web server, fallback to php-win.exe)
+If fso.FileExists(scriptDir & "\php\php.exe") Then
     phpExe = scriptDir & "\php\php.exe"
+ElseIf fso.FileExists(scriptDir & "\php\php-win.exe") Then
+    phpExe = scriptDir & "\php\php-win.exe"
 Else
-    MsgBox "PHP engine not found in: " & scriptDir & "\php" & vbCrLf & "Please run Setup.bat to configure Vendra POS.", 16, "Vendra POS Error"
+    MsgBox "PHP engine not found in: " & scriptDir & "\php" & vbCrLf & vbCrLf & _
+           "Please reinstall Vendra POS or run Setup.bat.", 16, "Vendra POS - File Missing"
     WScript.Quit 1
 End If
 
@@ -30,27 +38,35 @@ End If
 isRunning = False
 On Error Resume Next
 Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-http.open "GET", "http://127.0.0.1:8080/api/index.php", False
-http.setTimeouts 600, 600, 600, 600
+http.open "GET", "http://127.0.0.1:8080/", False
+http.setTimeouts 500, 500, 500, 500
 http.send
-If Err.Number = 0 Then isRunning = True
+If Err.Number = 0 And (http.status = 200 Or http.status = 405) Then
+    isRunning = True
+End If
 Err.Clear
 On Error GoTo 0
 
-' 2. If not running, start background PHP server with explicit extension_dir and php.ini
+' 2. If not running, start background PHP server with multi-worker concurrency and logging
 If Not isRunning Then
-    cmd = """" & phpExe & """ -d extension_dir=""" & scriptDir & "\php\ext"" -c """ & scriptDir & "\php\php.ini"" -S 127.0.0.1:8080 -t """ & scriptDir & "\app"" """ & scriptDir & "\app\router.php"""
+    ' Clear previous server log
+    On Error Resume Next
+    If fso.FileExists(logFile) Then fso.DeleteFile(logFile)
+    Err.Clear
+    On Error GoTo 0
+
+    cmd = "cmd.exe /c cd /d """ & scriptDir & """ && set PHP_CLI_SERVER_WORKERS=4 && """ & phpExe & """ -d extension_dir=""" & scriptDir & "\php\ext"" -c """ & scriptDir & "\php\php.ini"" -S 127.0.0.1:8080 -t """ & scriptDir & "\app"" """ & scriptDir & "\app\router.php"" > """ & logFile & """ 2>&1"
     WshShell.Run cmd, 0, False
 
     ' Wait up to 6 seconds for server to start responding
-    For attempts = 1 To 15
-        WScript.Sleep 400
+    For attempts = 1 To 20
+        WScript.Sleep 300
         On Error Resume Next
         Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-        http.open "GET", "http://127.0.0.1:8080/api/index.php", False
-        http.setTimeouts 500, 500, 500, 500
+        http.open "GET", "http://127.0.0.1:8080/", False
+        http.setTimeouts 400, 400, 400, 400
         http.send
-        If Err.Number = 0 Then
+        If Err.Number = 0 And (http.status = 200 Or http.status = 405) Then
             isRunning = True
             Exit For
         End If
@@ -59,7 +75,32 @@ If Not isRunning Then
     Next
 End If
 
-' 3. Find Edge, Chrome, or Brave for native borderless App Mode window
+' 3. If server failed to start, show diagnostic error and DO NOT open broken browser
+If Not isRunning Then
+    logContent = ""
+    On Error Resume Next
+    If fso.FileExists(logFile) Then
+        Set ts = fso.OpenTextFile(logFile, 1)
+        If Not ts.AtEndOfStream Then
+            logContent = ts.ReadAll()
+        End If
+        ts.Close
+    End If
+    Err.Clear
+    On Error GoTo 0
+
+    If Trim(logContent) = "" Then
+        logContent = "PHP engine did not respond on 127.0.0.1:8080 within 6 seconds." & vbCrLf & _
+                     "Possible causes: port 8080 conflict, missing Visual C++ runtime, or antivirus block."
+    End If
+
+    MsgBox "Vendra POS background server failed to start." & vbCrLf & vbCrLf & _
+           "Diagnostic output:" & vbCrLf & logContent & vbCrLf & vbCrLf & _
+           "Troubleshooting: Run 'VendraPOS-Debug.bat' in the install directory.", 16, "Vendra POS - Startup Error"
+    WScript.Quit 1
+End If
+
+' 4. Find Edge, Chrome, or Brave for native borderless App Mode window
 edgePath = WshShell.ExpandEnvironmentStrings("%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe")
 If Not fso.FileExists(edgePath) Then edgePath = WshShell.ExpandEnvironmentStrings("%ProgramFiles%\Microsoft\Edge\Application\msedge.exe")
 If Not fso.FileExists(edgePath) Then edgePath = WshShell.ExpandEnvironmentStrings("%LocalAppData%\Microsoft\Edge\Application\msedge.exe")
@@ -72,7 +113,7 @@ bravePath = WshShell.ExpandEnvironmentStrings("%ProgramFiles%\BraveSoftware\Brav
 If Not fso.FileExists(bravePath) Then bravePath = WshShell.ExpandEnvironmentStrings("%ProgramFiles(x86)%\BraveSoftware\Brave-Browser\Application\brave.exe")
 If Not fso.FileExists(bravePath) Then bravePath = WshShell.ExpandEnvironmentStrings("%LocalAppData%\BraveSoftware\Brave-Browser\Application\brave.exe")
 
-' 4. Launch window in App Mode
+' 5. Launch window in App Mode
 If fso.FileExists(edgePath) Then
     WshShell.Run """" & edgePath & """ --app=""http://127.0.0.1:8080"" --window-size=1280,900 --no-first-run --disable-default-browser-check", 1, False
 ElseIf fso.FileExists(chromePath) Then

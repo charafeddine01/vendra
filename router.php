@@ -84,10 +84,16 @@ if ($uri !== '/' && is_file($rootFile) && !str_ends_with($uri, '.php') && !str_s
     serveStatic($rootFile);
 }
 
-// 7. Commercial Showcase Landing Page (Root /)
+// 7. Commercial Showcase Landing Page or Standalone POS
 if ($uri === '/' || $uri === '') {
+    // If standalone desktop POS (has dist/index.html without a root index.html)
+    if (!file_exists(__DIR__ . '/index.html') && file_exists(__DIR__ . '/dist/index.html')) {
+        serveStatic(__DIR__ . '/dist/index.html');
+    }
     $showcase = file_exists(__DIR__ . '/public_html/index.html') ? __DIR__ . '/public_html/index.html' : __DIR__ . '/index.html';
-    serveStatic($showcase);
+    if (file_exists($showcase)) {
+        serveStatic($showcase);
+    }
 }
 
 // 8. Multi-Tenant Customer Live Demo:

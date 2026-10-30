@@ -36,6 +36,12 @@ if [ -f "$ROOT_DIR/database/omnipos-solar.sqlite" ]; then
     cp -f "$ROOT_DIR/database/omnipos-solar.sqlite" "$APP_DIR/database/omnipos.sqlite"
 fi
 
+# Ensure Visual C++ Redistributable is available for packaging
+if [ ! -f "$DIST_WIN/VendraPOS/vc_redist.x64.exe" ]; then
+    echo "-> Downloading Microsoft Visual C++ 2015-2022 x64 Redistributable..."
+    curl -sL https://aka.ms/vs/17/release/vc_redist.x64.exe -o "$DIST_WIN/VendraPOS/vc_redist.x64.exe"
+fi
+
 # 3. Ensure NSIS build tools are available
 echo "-> 3. Checking NSIS compiler..."
 MAKENSIS_CMD="makensis"
@@ -161,7 +167,6 @@ eval $MAKENSIS_PREFIX "$MAKENSIS_CMD" installer.nsi
 # 5. Copy to public_html/downloads for direct user download
 mkdir -p "$ROOT_DIR/public_html/downloads"
 cp -f "$DIST_WIN/VendraPOS-Setup.exe" "$ROOT_DIR/public_html/downloads/VendraPOS-Setup.exe"
-cp -f "$DIST_WIN/VendraPOS-Setup.exe" "$ROOT_DIR/public_html/downloads/VendraPOS-Installer.exe"
 
 EXE_SIZE=$(du -h "$DIST_WIN/VendraPOS-Setup.exe" | cut -f1)
 echo "======================================================================"
