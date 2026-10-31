@@ -159,6 +159,12 @@ EOF
     MAKENSIS_PREFIX="LD_PRELOAD=$TOOLS_DIR/nsis-redirect.so"
 fi
 
+# 3b. Compile Launcher and Stopper native GUI executables
+echo "-> 3b. Compiling native launcher (VendraPOS.exe) and stopper (Stop-VendraPOS.exe)..."
+cd "$DIST_WIN"
+eval $MAKENSIS_PREFIX "$MAKENSIS_CMD" launcher.nsi
+eval $MAKENSIS_PREFIX "$MAKENSIS_CMD" stopper.nsi
+
 # 4. Compile Single-File Installer
 echo "-> 4. Compiling VendraPOS-Setup.exe (Single-File Installer)..."
 cd "$DIST_WIN"

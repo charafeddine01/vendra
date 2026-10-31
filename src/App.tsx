@@ -164,6 +164,16 @@ export const App: React.FC = () => {
     fetchActiveShift();
   };
 
+  // Restrict cashiers and staff from disallowed tabs
+  useEffect(() => {
+    if (!currentUser) return;
+    const role = currentUser.role?.toUpperCase();
+    const cashierTabs = ['pos', 'restaurant', 'kds', 'returns', 'shifts', 'customers', 'customer_display'];
+    if (role === 'CASHIER' && !cashierTabs.includes(activeTab)) {
+      setActiveTab('pos');
+    }
+  }, [currentUser, activeTab]);
+
   const handleLogout = () => {
     ApiService.setAuthToken(null);
     setCurrentUser(null);
@@ -230,6 +240,7 @@ export const App: React.FC = () => {
         <Sidebar
           activeTab={activeTab}
           settings={settings}
+          currentUser={currentUser}
           onSelectTab={(tab) => {
             if (tab === 'returns') {
               setIsReturnsModalOpen(true);
@@ -262,9 +273,9 @@ export const App: React.FC = () => {
 
           {activeTab === 'kds' && <KitchenDisplayView />}
 
-          {activeTab === 'products' && <ProductsManager settings={settings} />}
+          {activeTab === 'products' && <ProductsManager settings={settings} currentUser={currentUser} />}
 
-          {activeTab === 'inventory' && <InventoryManager settings={settings} />}
+          {activeTab === 'inventory' && <InventoryManager settings={settings} currentUser={currentUser} />}
 
           {activeTab === 'customers' && <CustomersManager />}
 

@@ -100,20 +100,21 @@ Section "MainSection" SEC01
     ; 6. Create Shortcuts for All Users
     SetShellVarContext all
     CreateDirectory "$SMPROGRAMS\Vendra POS"
-    CreateShortCut "$SMPROGRAMS\Vendra POS\Vendra POS.lnk" "$WINDIR\System32\wscript.exe" '"$INSTDIR\Launch-VendraPOS.vbs"' "$INSTDIR\vendra.ico" 0 SW_SHOWNORMAL "" "Vendra Commercial POS System"
+    CreateShortCut "$SMPROGRAMS\Vendra POS\Vendra POS.lnk" "$INSTDIR\VendraPOS.exe" "" "$INSTDIR\VendraPOS.exe" 0 SW_SHOWNORMAL "" "Vendra Commercial POS System"
+    CreateShortCut "$SMPROGRAMS\Vendra POS\Stop Vendra POS.lnk" "$INSTDIR\Stop-VendraPOS.exe" "" "$INSTDIR\Stop-VendraPOS.exe" 0 SW_SHOWNORMAL "" "Stop Background Vendra Server"
     CreateShortCut "$SMPROGRAMS\Vendra POS\Vendra POS (Debug Console).lnk" "$INSTDIR\VendraPOS-Debug.bat" "" "$INSTDIR\vendra.ico" 0 SW_SHOWNORMAL "" "Vendra POS Diagnostic Console"
     CreateShortCut "$SMPROGRAMS\Vendra POS\Uninstall Vendra POS.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
-    CreateShortCut "$DESKTOP\Vendra POS.lnk" "$WINDIR\System32\wscript.exe" '"$INSTDIR\Launch-VendraPOS.vbs"' "$INSTDIR\vendra.ico" 0 SW_SHOWNORMAL "" "Vendra Commercial POS System"
+    CreateShortCut "$DESKTOP\Vendra POS.lnk" "$INSTDIR\VendraPOS.exe" "" "$INSTDIR\VendraPOS.exe" 0 SW_SHOWNORMAL "" "Vendra Commercial POS System"
 
     ; Also ensure Desktop shortcut on Current User Desktop
     SetShellVarContext current
-    CreateShortCut "$DESKTOP\Vendra POS.lnk" "$WINDIR\System32\wscript.exe" '"$INSTDIR\Launch-VendraPOS.vbs"' "$INSTDIR\vendra.ico" 0 SW_SHOWNORMAL "" "Vendra Commercial POS System"
+    CreateShortCut "$DESKTOP\Vendra POS.lnk" "$INSTDIR\VendraPOS.exe" "" "$INSTDIR\VendraPOS.exe" 0 SW_SHOWNORMAL "" "Vendra Commercial POS System"
 
     ; 7. Registry for Add/Remove Programs
-    WriteRegStr HKLM "${PRODUCT_DIR_REGKEY}" "" "$INSTDIR\Launch-VendraPOS.vbs"
+    WriteRegStr HKLM "${PRODUCT_DIR_REGKEY}" "" "$INSTDIR\VendraPOS.exe"
     WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayName" "${PRODUCT_NAME}"
     WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
-    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\vendra.ico"
+    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\VendraPOS.exe"
     WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"
     WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "URLInfoAbout" "${PRODUCT_WEB_SITE}"
     WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "Publisher" "${PRODUCT_PUBLISHER}"
@@ -123,13 +124,13 @@ Section "MainSection" SEC01
 SectionEnd
 
 Function LaunchApp
-    ExecShell "" "$WINDIR\System32\wscript.exe" '"$INSTDIR\Launch-VendraPOS.vbs"'
+    ExecShell "" "$INSTDIR\VendraPOS.exe"
 FunctionEnd
 
 Section "Uninstall"
     ; Terminate running servers
-    ExecWait 'taskkill /F /IM php-win.exe /FI "WINDOWTITLE eq Vendra*"'
-    ExecWait 'taskkill /F /IM php.exe /FI "WINDOWTITLE eq Vendra*"'
+    ExecWait '"$INSTDIR\Stop-VendraPOS.exe"'
+    ExecWait 'taskkill /F /IM php.exe'
 
     ; Delete Shortcuts
     SetShellVarContext all
@@ -149,6 +150,8 @@ Section "Uninstall"
     RMDir /r "$INSTDIR\app\api"
     RMDir /r "$INSTDIR\app\public"
     Delete "$INSTDIR\app\router.php"
+    Delete "$INSTDIR\VendraPOS.exe"
+    Delete "$INSTDIR\Stop-VendraPOS.exe"
     Delete "$INSTDIR\Launch-VendraPOS.vbs"
     Delete "$INSTDIR\VendraPOS.bat"
     Delete "$INSTDIR\VendraPOS-Debug.bat"

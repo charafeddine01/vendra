@@ -51,7 +51,7 @@ class InventoryController
 
     public static function adjust(array $payload): void
     {
-        Auth::requireRole(['ADMIN', 'MANAGER']);
+        Auth::requireRole(['ADMIN']);
         $user = Auth::getCurrentUser();
         $userId = (int)($user['id'] ?? 1);
 

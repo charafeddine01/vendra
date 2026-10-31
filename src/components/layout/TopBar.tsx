@@ -136,10 +136,11 @@ export const TopBar: React.FC<Props> = ({
 
         <div>
           <h1 className="font-bold text-sm tracking-tight leading-none text-white flex items-center gap-2">
-            <span>{lang === 'ar' && settings?.company_name_ar ? settings.company_name_ar : (settings?.company_name || 'OmniPOS Pro')}</span>
+            <span>{lang === 'ar' && settings?.company_name_ar ? settings.company_name_ar : (settings?.company_name || 'Vendra POS')}</span>
+            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded font-mono font-bold">v2.1.0</span>
           </h1>
           <span className="text-[10px] text-slate-400 font-mono tracking-wide">
-            {settings?.tax_id ? `TAX: ${settings.tax_id}` : 'Universal Cashier System'}
+            {settings?.tax_id ? `TAX: ${settings.tax_id}` : 'Universal Cashier System • Production'}
           </span>
         </div>
 

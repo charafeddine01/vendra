@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Warehouse, ProductBatch, CompanySettings } from '../../types';
+import { Warehouse, ProductBatch, CompanySettings, User } from '../../types';
 import { ApiService } from '../../services/api';
 import { I18nService } from '../../services/i18nService';
 import {
@@ -20,9 +20,10 @@ import {
 
 interface Props {
   settings: CompanySettings | null;
+  currentUser?: User | null;
 }
 
-export const InventoryManager: React.FC<Props> = ({ settings }) => {
+export const InventoryManager: React.FC<Props> = ({ settings, currentUser }) => {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [selectedWhId, setSelectedWhId] = useState<number>(1);
   const [stockLevels, setStockLevels] = useState<any[]>([]);
@@ -181,13 +182,15 @@ export const InventoryManager: React.FC<Props> = ({ settings }) => {
             />
           </div>
 
-          <button
-            onClick={() => { setAdjustProductId(stockLevels[0]?.product_id || 1); setIsAdjustModalOpen(true); }}
-            className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition border border-slate-700 flex items-center gap-1.5"
-          >
-            <Sliders className="w-3.5 h-3.5 text-blue-400" />
-            <span>Adjust Stock</span>
-          </button>
+          {currentUser?.role === 'ADMIN' && (
+            <button
+              onClick={() => { setAdjustProductId(stockLevels[0]?.product_id || 1); setIsAdjustModalOpen(true); }}
+              className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition border border-slate-700 flex items-center gap-1.5"
+            >
+              <Sliders className="w-3.5 h-3.5 text-blue-400" />
+              <span>Adjust Stock</span>
+            </button>
+          )}
           <button
             onClick={() => { setTransferProductId(stockLevels[0]?.product_id || 1); setIsTransferModalOpen(true); }}
             className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition shadow-md shadow-blue-600/30 flex items-center gap-1.5"
@@ -331,18 +334,24 @@ export const InventoryManager: React.FC<Props> = ({ settings }) => {
                       )}
                     </td>
 
-                    {/* Quick Adjust Button */}
+                    {/* Quick Adjust Button (Admin Only) */}
                     <td className="px-3 py-2.5 text-right">
-                      <button
-                        onClick={() => {
-                          setAdjustProductId(s.product_id);
-                          setAdjustQty(0);
-                          setIsAdjustModalOpen(true);
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-bold transition"
-                      >
-                        Adjust
-                      </button>
+                      {currentUser?.role === 'ADMIN' ? (
+                        <button
+                          onClick={() => {
+                            setAdjustProductId(s.product_id);
+                            setAdjustQty(0);
+                            setIsAdjustModalOpen(true);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-bold transition"
+                        >
+                          Adjust
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-slate-600 font-mono italic">
+                          Admin Only
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );

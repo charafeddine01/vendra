@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Product, Category, Unit, TaxRate, CompanySettings } from '../../types';
+import { Product, Category, Unit, TaxRate, CompanySettings, User } from '../../types';
 import { ApiService } from '../../services/api';
 import { I18nService } from '../../services/i18nService';
 import { CategoryManagerModal } from './CategoryManagerModal';
@@ -28,9 +28,10 @@ import {
 
 interface Props {
   settings: CompanySettings | null;
+  currentUser?: User | null;
 }
 
-export const ProductsManager: React.FC<Props> = ({ settings }) => {
+export const ProductsManager: React.FC<Props> = ({ settings, currentUser }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -55,6 +56,16 @@ export const ProductsManager: React.FC<Props> = ({ settings }) => {
 
   // Barcode Label Print Modal State
   const [labelProduct, setLabelProduct] = useState<Product | null>(null);
+
+  // Dedicated Restock (Stock In) Modal State
+  const [isRestockModalOpen, setIsRestockModalOpen] = useState(false);
+  const [restockProductId, setRestockProductId] = useState<number | null>(null);
+  const [restockProductName, setRestockProductName] = useState('');
+  const [restockPackQty, setRestockPackQty] = useState(1);
+  const [restockQty, setRestockQty] = useState(1);
+  const [restockMode, setRestockMode] = useState<'UNITS' | 'PACKS'>('UNITS');
+  const [restockReason, setRestockReason] = useState('Supplier Restock / Purchase');
+  const [restockLoading, setRestockLoading] = useState(false);
 
   const fetchCatalog = async () => {
     setLoading(true);
@@ -161,6 +172,39 @@ export const ProductsManager: React.FC<Props> = ({ settings }) => {
     } finally {
       setSyncingOnline(false);
       setTimeout(() => setSyncMessage(null), 6000);
+    }
+  };
+
+  const handleRestockSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restockProductId || restockQty <= 0) return;
+    setRestockLoading(true);
+    try {
+      const res = await ApiService.request('inventory.adjust', {
+        product_id: restockProductId,
+        warehouse_id: 1,
+        quantity: restockQty,
+        unit_type: restockMode,
+        reason: restockReason || 'Supplier Restock / Purchase',
+      });
+      if (res.success) {
+        setIsRestockModalOpen(false);
+        fetchCatalog();
+        if (editingProduct && editingProduct.id === restockProductId) {
+          const addedUnits = restockMode === 'PACKS' ? restockQty * restockPackQty : restockQty;
+          setEditingProduct((prev: any) => ({
+            ...prev,
+            current_stock: Number(prev.current_stock ?? 0) + addedUnits,
+          }));
+        }
+        alert('Stock added successfully and recorded in audit movement logs.');
+      } else {
+        alert(res.error?.message || 'Failed to add stock');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to add stock');
+    } finally {
+      setRestockLoading(false);
     }
   };
 
@@ -814,48 +858,104 @@ export const ProductsManager: React.FC<Props> = ({ settings }) => {
                 </div>
               </div>
 
-              {/* Stock Input (Units vs Packs) */}
-              <div className="pt-2 border-t border-slate-800">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-bold text-slate-300">Initial Stock Quantity</label>
-                  <div className="flex items-center bg-slate-950 border border-slate-700 rounded-xl p-0.5 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setStockInputMode('UNITS')}
-                      className={`px-3 py-1 rounded-lg font-bold transition ${
-                        stockInputMode === 'UNITS' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      In Units
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStockInputMode('PACKS')}
-                      className={`px-3 py-1 rounded-lg font-bold transition ${
-                        stockInputMode === 'PACKS' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      In Packs (x{(editingProduct as any).pack_quantity || 1})
-                    </button>
+              {/* Stock Management (Units vs Packs) */}
+              {editingProduct.id ? (
+                /* EXISTING PRODUCT: READ-ONLY CURRENT STOCK + DEDICATED ADD STOCK BUTTON */
+                <div className="pt-2 border-t border-slate-800">
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-semibold text-slate-400 block">Current In-Stock Quantity (Read-Only)</span>
+                      <span className="text-sm font-mono font-bold text-emerald-400">
+                        {Number((editingProduct as any).current_stock ?? 0).toFixed(2)} Units
+                      </span>
+                      {Number((editingProduct as any).pack_quantity || 1) > 1 && (
+                        <span className="text-[10px] text-amber-300 font-bold block">
+                          {Math.floor(Number((editingProduct as any).current_stock ?? 0) / Number((editingProduct as any).pack_quantity))} packs + {Math.round(Number((editingProduct as any).current_stock ?? 0) % Number((editingProduct as any).pack_quantity))} units
+                        </span>
+                      )}
+                    </div>
+                    {currentUser?.role === 'ADMIN' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRestockProductId(editingProduct.id as number);
+                          setRestockProductName(editingProduct.name || '');
+                          setRestockPackQty(Number((editingProduct as any).pack_quantity || 1));
+                          setRestockQty(1);
+                          setRestockMode('UNITS');
+                          setRestockReason('Supplier Restock / Purchase');
+                          setIsRestockModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/30 transition"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Add Stock (Stock In)</span>
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-slate-500 italic bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+                        Admin role required to add stock
+                      </span>
+                    )}
                   </div>
+                  <p className="text-[10px] text-slate-500 mt-1.5 px-1">
+                    * Product quantity cannot be arbitrarily modified. Stock can only be added by Admin with audit logging in movement logs. Cashiers only stock out via sales.
+                  </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={rawStockInput}
-                    onChange={(e) => setRawStockInput(parseFloat(e.target.value) || 0)}
-                    placeholder="Enter stock"
-                    className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-blue-500"
-                  />
-                  {stockInputMode === 'PACKS' && Number((editingProduct as any).pack_quantity || 1) > 1 && (
-                    <span className="text-xs text-amber-300 font-bold shrink-0">
-                      = {rawStockInput * Number((editingProduct as any).pack_quantity || 1)} individual units
-                    </span>
+              ) : (
+                /* NEW PRODUCT: INITIAL STOCK INPUT (Audited into stock_movements) */
+                <div className="pt-2 border-t border-slate-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-slate-300">Initial Stock Quantity</label>
+                    {currentUser?.role === 'ADMIN' && (
+                      <div className="flex items-center bg-slate-950 border border-slate-700 rounded-xl p-0.5 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setStockInputMode('UNITS')}
+                          className={`px-3 py-1 rounded-lg font-bold transition ${
+                            stockInputMode === 'UNITS' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          In Units
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setStockInputMode('PACKS')}
+                          className={`px-3 py-1 rounded-lg font-bold transition ${
+                            stockInputMode === 'PACKS' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          In Packs (x{(editingProduct as any).pack_quantity || 1})
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {currentUser?.role === 'ADMIN' ? (
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={rawStockInput}
+                        onChange={(e) => setRawStockInput(parseFloat(e.target.value) || 0)}
+                        placeholder="Enter initial stock"
+                        className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-blue-500"
+                      />
+                      {stockInputMode === 'PACKS' && Number((editingProduct as any).pack_quantity || 1) > 1 && (
+                        <span className="text-xs text-amber-300 font-bold shrink-0">
+                          = {rawStockInput * Number((editingProduct as any).pack_quantity || 1)} individual units
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-500 italic bg-slate-950 border border-slate-800 rounded-xl px-3 py-2">
+                      Initial stock defaults to 0. Only Admin users can enter initial stock.
+                    </div>
                   )}
+                  <p className="text-[10px] text-slate-500 mt-1 px-1">
+                    * Initial stock entered will be audited into the in/out movement ledger.
+                  </p>
                 </div>
-              </div>
+              )}
 
               {editingProduct.type === 'SCALE' && (
                 <div>
@@ -938,6 +1038,113 @@ export const ProductsManager: React.FC<Props> = ({ settings }) => {
               <Printer className="w-4 h-4" />
               <span>Print Label</span>
             </button>
+          </div>
+        </div>
+      )}
+      {/* Dedicated Restock / Stock In Modal */}
+      {isRestockModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm p-6 shadow-2xl relative">
+            <button
+              onClick={() => setIsRestockModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
+                <Plus className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-sm">Stock In (+ Add Stock)</h3>
+                <span className="text-[10px] text-slate-400 truncate block max-w-[220px]">
+                  {restockProductName}
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleRestockSubmit} className="space-y-3">
+              {/* Unit Mode Selector */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-400">Stock In Unit</label>
+                  {restockPackQty > 1 && (
+                    <span className="text-[10px] text-amber-400 font-bold">
+                      1 Pack = {restockPackQty} units
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1 rounded-xl border border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setRestockMode('UNITS')}
+                    className={`py-1.5 rounded-lg text-xs font-bold transition ${
+                      restockMode === 'UNITS' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    In Units
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRestockMode('PACKS')}
+                    className={`py-1.5 rounded-lg text-xs font-bold transition ${
+                      restockMode === 'PACKS' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    In Packs (x{restockPackQty})
+                  </button>
+                </div>
+              </div>
+
+              {/* Quantity */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">
+                  Quantity to Add ({restockMode === 'PACKS' ? 'Packs' : 'Units'})
+                </label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="any"
+                  required
+                  value={restockQty}
+                  onChange={(e) => setRestockQty(parseFloat(e.target.value) || 0)}
+                  placeholder="e.g. 10"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                />
+                {restockMode === 'PACKS' && restockPackQty > 1 && (
+                  <span className="text-[11px] text-amber-300 font-bold block mt-1">
+                    = {restockQty * restockPackQty} individual units added
+                  </span>
+                )}
+              </div>
+
+              {/* Reason / Reference */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">
+                  Reason / Supplier / Note
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={restockReason}
+                  onChange={(e) => setRestockReason(e.target.value)}
+                  placeholder="e.g. Invoice #123, Restock shipment"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={restockLoading || restockQty <= 0}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-xs transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{restockLoading ? 'Recording In Audit Logs...' : 'Confirm Stock In'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

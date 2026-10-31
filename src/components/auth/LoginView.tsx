@@ -179,13 +179,6 @@ export const LoginView: React.FC<Props> = ({ settings, onLoginSuccess }) => {
     }
   };
 
-  // Quick 1-click test fill helper
-  const handleQuickLogin = (quickPin: string, userObj?: User) => {
-    if (userObj) setSelectedUser(userObj);
-    setPin(quickPin);
-    executePinLogin(quickPin, userObj || null);
-  };
-
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 font-sans select-none text-slate-100 relative overflow-hidden">
       {/* Decorative ambient background glows */}
@@ -367,37 +360,6 @@ export const LoginView: React.FC<Props> = ({ settings, onLoginSuccess }) => {
               </button>
             </div>
 
-            {/* Quick Demo Credentials for Fast Testing */}
-            <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-2.5 mb-3.5">
-              <div className="text-[10px] text-slate-400 font-semibold mb-1.5 flex items-center justify-between px-1">
-                <span>Quick Test PINs (1-Click Fill):</span>
-                <span className="text-[9px] text-emerald-400 font-mono">Auto Login</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin('1234')}
-                  className="bg-slate-900 hover:bg-emerald-950/40 hover:border-emerald-600/50 border border-slate-800 px-2 py-1.5 rounded-xl text-[10px] font-bold text-slate-300 hover:text-emerald-300 transition text-center truncate"
-                >
-                  👑 Admin <span className="text-emerald-400 font-mono">1234</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin('2222')}
-                  className="bg-slate-900 hover:bg-emerald-950/40 hover:border-emerald-600/50 border border-slate-800 px-2 py-1.5 rounded-xl text-[10px] font-bold text-slate-300 hover:text-emerald-300 transition text-center truncate"
-                >
-                  💼 Mgr <span className="text-emerald-400 font-mono">2222</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin('3333')}
-                  className="bg-slate-900 hover:bg-emerald-950/40 hover:border-emerald-600/50 border border-slate-800 px-2 py-1.5 rounded-xl text-[10px] font-bold text-slate-300 hover:text-emerald-300 transition text-center truncate"
-                >
-                  🛒 Cashier <span className="text-emerald-400 font-mono">3333</span>
-                </button>
-              </div>
-            </div>
-
             {/* Submit button (if not auto-submitted) */}
             <button
               type="button"
@@ -455,11 +417,6 @@ export const LoginView: React.FC<Props> = ({ settings, onLoginSuccess }) => {
               </div>
             </div>
 
-            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-2 text-[10px] text-slate-400 flex items-center justify-between">
-              <span>Default Master Login:</span>
-              <span className="font-mono text-emerald-400">admin / admin123</span>
-            </div>
-
             <button
               type="submit"
               disabled={isSubmitting}
@@ -507,7 +464,7 @@ export const LoginView: React.FC<Props> = ({ settings, onLoginSuccess }) => {
 
         {/* Security & System Info Footer */}
         <div className="mt-4 text-center text-[10px] text-slate-400 font-mono">
-          Vendra POS • Ed25519 Verified • 100% POST
+          Vendra Commercial POS • Production v2.1.0
         </div>
       </div>
     </div>

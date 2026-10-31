@@ -199,11 +199,25 @@ class ProductsController
                 $productId = (int)$pdo->lastInsertId();
 
                 // Initialize stock record (If entered as packs, convert to total individual units)
-                $rawStock = (float)($payload['initial_stock'] ?? 10);
+                // Only ADMIN can initialize non-zero stock
+                $currentUser = Auth::getCurrentUser();
+                $isAdmin = strtoupper($currentUser['role'] ?? '') === 'ADMIN';
+                $rawStock = $isAdmin ? (float)($payload['initial_stock'] ?? 0) : 0.0;
                 $initialStock = ($stockInputMode === 'PACKS' && $packQuantity > 1) ? ($rawStock * $packQuantity) : $rawStock;
 
                 $stmtStock = $pdo->prepare('INSERT INTO `stock_inventory` (`product_id`, `warehouse_id`, `quantity`) VALUES (:pid, 1, :qty)');
                 $stmtStock->execute([':pid' => $productId, ':qty' => $initialStock]);
+
+                // Record initial stock creation in audit movements log
+                if ($initialStock > 0) {
+                    $creatorId = (int)($currentUser['id'] ?? 1);
+                    $stmtMov = $pdo->prepare('INSERT INTO `stock_movements` (
+                        `product_id`, `warehouse_id`, `movement_type`, `quantity`, `reference_type`, `notes`, `created_by`
+                    ) VALUES (
+                        :pid, 1, "PURCHASE", :qty, "INITIAL", "Initial stock setup on product creation", :by
+                    )');
+                    $stmtMov->execute([':pid' => $productId, ':qty' => $initialStock, ':by' => $creatorId]);
+                }
             }
 
             // Save variants if variable

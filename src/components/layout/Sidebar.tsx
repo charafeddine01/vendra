@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CompanySettings } from '../../types';
+import { CompanySettings, User } from '../../types';
 import { I18nService } from '../../services/i18nService';
 import {
   LayoutGrid,
@@ -41,13 +41,14 @@ export type ActiveTab =
 interface Props {
   activeTab: ActiveTab;
   settings?: CompanySettings | null;
+  currentUser?: User | null;
   onSelectTab: (tab: ActiveTab) => void;
   onLogout: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
 }
 
-export const Sidebar: React.FC<Props> = ({ activeTab, settings, onSelectTab, onLogout, isCollapsed: externalCollapsed, onToggleCollapse }) => {
+export const Sidebar: React.FC<Props> = ({ activeTab, settings, currentUser, onSelectTab, onLogout, isCollapsed: externalCollapsed, onToggleCollapse }) => {
   const isRestaurant = settings?.business_mode === 'RESTAURANT';
   // Responsive default: On square or smaller screens (< 1280px), start auto-collapsed (icon-only) to maximize POS work area
   const [isPinned, setIsPinned] = useState(() => {
@@ -78,7 +79,28 @@ export const Sidebar: React.FC<Props> = ({ activeTab, settings, onSelectTab, onL
     { id: 'license', label: I18nService.t('lic.title'), icon: ShieldCheck },
   ];
 
-  const menuItems = allMenuItems.filter((item) => !item.restaurantOnly || isRestaurant);
+  const userRole = currentUser?.role?.toUpperCase();
+  const cashierTabs: ActiveTab[] = ['pos', 'restaurant', 'kds', 'returns', 'shifts', 'customers', 'customer_display'];
+  const waiterTabs: ActiveTab[] = ['restaurant', 'pos', 'kds'];
+  const kitchenTabs: ActiveTab[] = ['kds'];
+  const managerDisallowedTabs: ActiveTab[] = ['backup', 'license'];
+
+  const menuItems = allMenuItems.filter((item) => {
+    if (item.restaurantOnly && !isRestaurant) return false;
+    if (userRole === 'CASHIER') {
+      return cashierTabs.includes(item.id);
+    }
+    if (userRole === 'WAITER') {
+      return waiterTabs.includes(item.id);
+    }
+    if (userRole === 'KITCHEN') {
+      return kitchenTabs.includes(item.id);
+    }
+    if (userRole === 'MANAGER') {
+      return !managerDisallowedTabs.includes(item.id);
+    }
+    return true; // ADMIN or full access
+  });
 
   return (
     <aside
@@ -156,6 +178,12 @@ export const Sidebar: React.FC<Props> = ({ activeTab, settings, onSelectTab, onL
             </div>
           )}
         </div>
+        {/* Production Version */}
+        {!isCollapsed && (
+          <div className="text-[10px] text-slate-500 font-mono text-center pt-1.5 border-t border-slate-800/60">
+            Vendra POS v2.1.0 • Release
+          </div>
+        )}
       </div>
     </aside>
   );
